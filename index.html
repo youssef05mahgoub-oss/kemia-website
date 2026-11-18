@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>KEMIA — AI studio in Cairo. We turn busywork into gold.</title>
+  <meta name="description" content="KEMIA is an AI studio in Cairo. We build WhatsApp AI agents, automations, 3D websites and content systems that work for your business 24/7 — in Egyptian Arabic, English and Franco." />
+  <meta name="theme-color" content="#EEECE6" />
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="KEMIA — We turn busywork into gold." />
+  <meta property="og:description" content="AI agents, automations, websites and content — built in Cairo, working for your business 24/7." />
+  <meta property="og:image" content="https://youssef05mahgoub-oss.github.io/kemia-website/og.jpg" />
+  <meta property="og:url" content="https://youssef05mahgoub-oss.github.io/kemia-website/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body class="is-loading">
+  <!-- Loader -->
+  <div class="loader" aria-hidden="true">
+    <div class="loader__mark">
+      <svg viewBox="0 0 120 120"><circle cx="60" cy="64" r="40" /><path d="M60 14 L106 94 H14 Z" /><circle class="dot" cx="60" cy="68" r="12" /></svg>
+    </div>
+    <div class="loader__row"><span data-i18n="loader.line">Transmuting</span><span class="loader__pct">0</span></div>
+    <div class="loader__bar"><i></i></div>
+  </div>
+
+  <canvas id="gl" aria-hidden="true"></canvas>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="cursor" aria-hidden="true"><i></i><span class="cursor__label"></span></div>
+
+  <!-- Nav -->
+  <header class="nav">
+    <a href="#top" class="nav__logo" aria-label="KEMIA home">
+      <svg viewBox="0 0 120 120" class="nav__mark"><circle cx="60" cy="64" r="40" /><path d="M60 14 L106 94 H14 Z" /><circle class="dot" cx="60" cy="68" r="12" /></svg>
+      <span>KEMIA</span>
+    </a>
+    <nav class="nav__links" aria-label="Main">
+      <a href="#services" data-i18n="nav.services">Services</a>
+      <a href="#work" data-i18n="nav.work">Work</a>
+      <a href="#process" data-i18n="nav.process">Process</a>
+      <a href="#contact" data-i18n="nav.contact">Contact</a>
+    </nav>
+    <div class="nav__right">
+      <button class="nav__lang" type="button" data-lang-toggle aria-label="Switch language"><span data-i18n="nav.lang">ع</span></button>
+      <a href="#contact" class="btn btn--pill btn--sm" data-cursor="Let's go"><span data-i18n="nav.cta">Start a project</span><i class="btn__dot"></i></a>
+      <button class="nav__burger" type="button" aria-label="Menu" aria-expanded="false"><i></i><i></i></button>
+    </div>
+  </header>
+  <div class="menu" aria-hidden="true">
+    <a href="#services" data-i18n="nav.services">Services</a>
+    <a href="#work" data-i18n="nav.work">Work</a>
+    <a href="#process" data-i18n="nav.process">Process</a>
+    <a href="#contact" data-i18n="nav.contact">Contact</a>
+    <button type="button" data-lang-toggle class="menu__lang"><span data-i18n="nav.lang">ع</span></button>
+  </div>
+
+  <main id="top">
+    <!-- HERO -->
+    <section class="hero" data-scene="hero">
+      <div class="hero__grid">
+        <div class="hero__left">
+          <p class="kicker"><span class="kicker__dot"></span><span data-i18n="hero.kicker">AI studio — Cairo, Egypt</span></p>
+          <h1 class="hero__title">
+            <span class="line"><span data-i18n="hero.t1">We turn</span></span>
+            <span class="line"><em data-i18n="hero.t2">busywork</em></span>
+            <span class="line"><span data-i18n="hero.t3">into gold.</span></span>
+          </h1>
+          <p class="hero__sub" data-i18n="hero.sub">AI agents, automations, websites and content — built in Cairo, working for your business around the clock.</p>
+          <div class="hero__ctas">
+            <a href="#services" class="btn btn--ghost" data-cursor="Explore"><span class="toggle"><i></i></span><span data-i18n="hero.cta1">See the formulas</span></a>
+            <a href="#contact" class="btn btn--pill" data-cursor="Let's go"><span data-i18n="hero.cta2">Start a project</span><i class="btn__dot"></i></a>
+          </div>
+        </div>
+        <aside class="hero__stat">
+          <div class="hero__statNum" data-i18n="hero.stat">24/7</div>
+          <p class="hero__statLabel" data-i18n="hero.statLabel">Your AI never sleeps.</p>
+          <p class="hero__statText" data-i18n="hero.statText">Replies in seconds — in Egyptian Arabic, English and Franco.</p>
+          <div class="hero__langs"><span>AR</span><span>EN</span><span>3arabi</span></div>
+        </aside>
+      </div>
+      <div class="hero__meta">
+        <span class="mono" data-i18n="hero.vol">Vol. 01 — 2026</span>
+        <span class="mono hero__scroll"><i></i><span data-i18n="hero.scroll">Scroll to transmute</span></span>
+        <span class="mono">30.0444° N, 31.2357° E</span>
+      </div>
+      <div class="wordmark" aria-hidden="true"><span>K</span><span>E</span><span>M</span><span>I</span><span>A</span></div>
+    </section>
+
+    <!-- MARQUEE -->
+    <div class="marquee" aria-hidden="true">
+      <div class="marquee__track"><span data-i18n="marquee"></span><span data-i18n="marquee"></span><span data-i18n="marquee"></span></div>
+    </div>
+
+    <!-- MANIFESTO -->
+    <section class="manifesto" data-scene="manifesto">
+      <p class="label mono" data-i18n="mani.label">( The idea )</p>
+      <p class="manifesto__text split-words" data-i18n="mani.text"></p>
+      <p class="manifesto__note mono" data-i18n="mani.note"></p>
+    </section>
+
+    <!-- SERVICES -->
+    <section class="services dark" id="services" data-scene="services">
+      <div class="section-head">
+        <p class="label mono" data-i18n="svc.label">( The formulas )</p>
+        <h2 class="h2" data-i18n="svc.title">Eight formulas. One result.</h2>
+      </div>
+      <div class="table" data-services></div>
+    </section>
+
+    <!-- DEMO -->
+    <section class="demo dark" data-scene="demo">
+      <div class="demo__copy">
+        <p class="label mono" data-i18n="demo.label">( Live formula )</p>
+        <h2 class="h2" data-i18n="demo.title">A receptionist that speaks Egyptian.</h2>
+        <p class="demo__text" data-i18n="demo.text"></p>
+        <ul class="demo__points">
+          <li><i>01</i><span data-i18n="demo.p1"></span></li>
+          <li><i>02</i><span data-i18n="demo.p2"></span></li>
+          <li><i>03</i><span data-i18n="demo.p3"></span></li>
+          <li><i>04</i><span data-i18n="demo.p4"></span></li>
+        </ul>
+      </div>
+      <div class="phone" data-chat>
+        <div class="phone__notch"></div>
+        <div class="phone__head">
+          <div class="phone__avatar"><svg viewBox="0 0 120 120"><circle cx="60" cy="64" r="40" /><path d="M60 14 L106 94 H14 Z" /><circle class="dot" cx="60" cy="68" r="12" /></svg></div>
+          <div><b data-i18n="demo.chatName">Clinic assistant</b><small data-i18n="demo.chatStatus">online</small></div>
+        </div>
+        <div class="phone__body" dir="rtl" data-chat-body></div>
+        <div class="phone__saved"><i></i><span data-i18n="demo.saved">Saved to Google Sheet</span></div>
+      </div>
+    </section>
+
+    <!-- WORK -->
+    <section class="work" id="work" data-scene="work">
+      <div class="section-head">
+        <p class="label mono" data-i18n="work.label">( Selected builds )</p>
+        <h2 class="h2" data-i18n="work.title">Proof, not promises.</h2>
+      </div>
+      <div class="work__grid">
+        <article class="card card--a" data-cursor="View">
+          <div class="card__art art-chat"><span></span><span></span><span></span><span></span></div>
+          <p class="mono card__type" data-i18n="work.1.type"></p>
+          <h3 data-i18n="work.1.name"></h3>
+          <p data-i18n="work.1.desc"></p>
+        </article>
+        <article class="card card--b" data-cursor="View">
+          <div class="card__art art-tiles"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <p class="mono card__type" data-i18n="work.2.type"></p>
+          <h3 data-i18n="work.2.name"></h3>
+          <p data-i18n="work.2.desc"></p>
+        </article>
+        <article class="card card--c" data-cursor="View">
+          <div class="card__art art-clips"><span></span><span></span><span></span><span></span><span></span></div>
+          <p class="mono card__type" data-i18n="work.3.type"></p>
+          <h3 data-i18n="work.3.name"></h3>
+          <p data-i18n="work.3.desc"></p>
+        </article>
+        <article class="card card--d" data-cursor="View">
+          <div class="card__art art-orbit"><b></b><span></span><span></span><span></span><span></span></div>
+          <p class="mono card__type" data-i18n="work.4.type"></p>
+          <h3 data-i18n="work.4.name"></h3>
+          <p data-i18n="work.4.desc"></p>
+        </article>
+      </div>
+      <div class="stats">
+        <div class="stat"><b data-count="3">3</b><p data-i18n="stats.1"></p></div>
+        <div class="stat"><b>24/7</b><p data-i18n="stats.2"></p></div>
+        <div class="stat"><b><span data-count="10">10</span>s</b><p data-i18n="stats.3"></p></div>
+        <div class="stat"><b data-i18n="stats.4v">Days</b><p data-i18n="stats.4"></p></div>
+      </div>
+    </section>
+
+    <!-- PROCESS -->
+    <section class="process" id="process" data-scene="process">
+      <div class="section-head">
+        <p class="label mono" data-i18n="proc.label">( The process )</p>
+        <h2 class="h2" data-i18n="proc.title">Four stages. Lead in, gold out.</h2>
+      </div>
+      <ol class="steps">
+        <li class="step"><span class="step__n">01</span><span class="step__swatch s1"></span><p class="mono" data-i18n="proc.1.stage"></p><h3 data-i18n="proc.1.name"></h3><p data-i18n="proc.1.desc"></p></li>
+        <li class="step"><span class="step__n">02</span><span class="step__swatch s2"></span><p class="mono" data-i18n="proc.2.stage"></p><h3 data-i18n="proc.2.name"></h3><p data-i18n="proc.2.desc"></p></li>
+        <li class="step"><span class="step__n">03</span><span class="step__swatch s3"></span><p class="mono" data-i18n="proc.3.stage"></p><h3 data-i18n="proc.3.name"></h3><p data-i18n="proc.3.desc"></p></li>
+        <li class="step"><span class="step__n">04</span><span class="step__swatch s4"></span><p class="mono" data-i18n="proc.4.stage"></p><h3 data-i18n="proc.4.name"></h3><p data-i18n="proc.4.desc"></p></li>
+      </ol>
+    </section>
+
+    <!-- WHY -->
+    <section class="why" data-scene="process">
+      <div class="section-head">
+        <p class="label mono" data-i18n="why.label">( Why KEMIA )</p>
+        <h2 class="h2" data-i18n="why.title">Global quality. Egyptian pricing.</h2>
+      </div>
+      <div class="why__grid">
+        <div class="why__item"><span class="why__ico">◐</span><h3 data-i18n="why.1.t"></h3><p data-i18n="why.1.d"></p></div>
+        <div class="why__item"><span class="why__ico">△</span><h3 data-i18n="why.2.t"></h3><p data-i18n="why.2.d"></p></div>
+        <div class="why__item"><span class="why__ico">◯</span><h3 data-i18n="why.3.t"></h3><p data-i18n="why.3.d"></p></div>
+        <div class="why__item"><span class="why__ico">✦</span><h3 data-i18n="why.4.t"></h3><p data-i18n="why.4.d"></p></div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="faq" data-scene="faq">
+      <div class="section-head">
+        <p class="label mono" data-i18n="faq.label">( Questions )</p>
+        <h2 class="h2" data-i18n="faq.title">Before you ask.</h2>
+      </div>
+      <div class="faq__list">
+        <details><summary><span data-i18n="faq.1.q"></span><i></i></summary><p data-i18n="faq.1.a"></p></details>
+        <details><summary><span data-i18n="faq.2.q"></span><i></i></summary><p data-i18n="faq.2.a"></p></details>
+        <details><summary><span data-i18n="faq.3.q"></span><i></i></summary><p data-i18n="faq.3.a"></p></details>
+        <details><summary><span data-i18n="faq.4.q"></span><i></i></summary><p data-i18n="faq.4.a"></p></details>
+        <details><summary><span data-i18n="faq.5.q"></span><i></i></summary><p data-i18n="faq.5.a"></p></details>
+      </div>
+    </section>
+
+    <!-- CONTACT -->
+    <section class="contact dark" id="contact" data-scene="contact">
+      <div class="contact__head">
+        <p class="label mono" data-i18n="contact.label">( Start a project )</p>
+        <h2 class="contact__title"><span data-i18n="contact.title1">Let’s make</span> <em data-i18n="contact.title2">gold.</em></h2>
+        <p class="contact__text" data-i18n="contact.text"></p>
+      </div>
+      <form class="form" novalidate data-form>
+        <div class="form__row">
+          <label class="field"><span data-i18n="form.name">Your name</span><input name="name" autocomplete="name" required /></label>
+          <label class="field"><span data-i18n="form.business">Business name</span><input name="business" autocomplete="organization" /></label>
+        </div>
+        <div class="form__row">
+          <label class="field"><span data-i18n="form.phone">WhatsApp number</span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" dir="ltr" placeholder="+20 1xx xxx xxxx" required /></label>
+          <label class="field"><span data-i18n="form.email">Email (optional)</span><input name="email" type="email" autocomplete="email" dir="ltr" /></label>
+        </div>
+        <fieldset class="chips">
+          <legend data-i18n="form.need">What do you need?</legend>
+          <div class="chips__list" data-chips></div>
+        </fieldset>
+        <label class="field field--area"><span data-i18n="form.msg">Tell us a bit about your business</span><textarea name="message" rows="3"></textarea></label>
+        <input type="text" name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
+        <div class="form__foot">
+          <button class="btn btn--molten" type="submit" data-cursor="Send"><span data-i18n="form.send">Send the formula</span><i class="btn__dot"></i></button>
+          <p class="form__status" role="status" aria-live="polite"></p>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <footer class="footer dark">
+    <div class="footer__top">
+      <div>
+        <p class="mono" data-i18n="foot.tag">AI studio — Cairo, Egypt</p>
+        <p class="footer__made" data-i18n="foot.made">Made with alchemy in Cairo.</p>
+      </div>
+      <nav class="footer__links">
+        <a href="#services" data-i18n="nav.services">Services</a>
+        <a href="#work" data-i18n="nav.work">Work</a>
+        <a href="#process" data-i18n="nav.process">Process</a>
+        <a href="#contact" data-i18n="nav.contact">Contact</a>
+      </nav>
+    </div>
+    <div class="footer__word" aria-hidden="true">KEMIA</div>
+    <p class="mono footer__rights" data-i18n="foot.rights">© 2026 KEMIA. All rights reserved.</p>
+  </footer>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
