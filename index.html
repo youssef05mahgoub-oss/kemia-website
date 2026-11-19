@@ -3,16 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>KEMIA — AI studio in Cairo. We turn busywork into gold.</title>
-  <meta name="description" content="KEMIA is an AI studio in Cairo. We build WhatsApp AI agents, automations, 3D websites and content systems that work for your business 24/7 — in Egyptian Arabic, English and Franco." />
+  <!--seo--><!--/seo-->
   <meta name="theme-color" content="#EEECE6" />
   <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="KEMIA — We turn busywork into gold." />
-  <meta property="og:description" content="AI agents, automations, websites and content — built in Cairo, working for your business 24/7." />
-  <meta property="og:image" content="https://youssef05mahgoub-oss.github.io/kemia-website/og.jpg" />
-  <meta property="og:url" content="https://youssef05mahgoub-oss.github.io/kemia-website/" />
-  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body class="is-loading">
@@ -42,17 +36,17 @@
       <a href="#contact" data-i18n="nav.contact">Contact</a>
     </nav>
     <div class="nav__right">
-      <button class="nav__lang" type="button" data-lang-toggle aria-label="Switch language"><span data-i18n="nav.lang">ع</span></button>
+      <a class="nav__lang" href="./ar/" hreflang="ar" data-lang-link data-i18n-label="nav.langLabel" aria-label="اقرأ الموقع بالعربي"><span data-i18n="nav.lang">ع</span></a>
       <a href="#contact" class="btn btn--pill btn--sm" data-cursor="Let's go"><span data-i18n="nav.cta">Start a project</span><i class="btn__dot"></i></a>
-      <button class="nav__burger" type="button" aria-label="Menu" aria-expanded="false"><i></i><i></i></button>
+      <button class="nav__burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="menu"><i></i><i></i></button>
     </div>
   </header>
-  <div class="menu" aria-hidden="true">
+  <div class="menu" id="menu" inert>
     <a href="#services" data-i18n="nav.services">Services</a>
     <a href="#work" data-i18n="nav.work">Work</a>
     <a href="#process" data-i18n="nav.process">Process</a>
     <a href="#contact" data-i18n="nav.contact">Contact</a>
-    <button type="button" data-lang-toggle class="menu__lang"><span data-i18n="nav.lang">ع</span></button>
+    <a class="menu__lang" href="./ar/" hreflang="ar" data-lang-link data-i18n-label="nav.langLabel" aria-label="اقرأ الموقع بالعربي"><span data-i18n="nav.lang">ع</span></a>
   </div>
 
   <main id="top">
@@ -105,7 +99,7 @@
         <p class="label mono" data-i18n="svc.label">( The formulas )</p>
         <h2 class="h2" data-i18n="svc.title">Eight formulas. One result.</h2>
       </div>
-      <div class="table" data-services></div>
+      <div class="table" data-services><!--svc--><!--/svc--></div>
     </section>
 
     <!-- DEMO -->
@@ -233,7 +227,7 @@
         </div>
         <fieldset class="chips">
           <legend data-i18n="form.need">What do you need?</legend>
-          <div class="chips__list" data-chips></div>
+          <div class="chips__list" data-chips><!--chips--><!--/chips--></div>
         </fieldset>
         <label class="field field--area"><span data-i18n="form.msg">Tell us a bit about your business</span><textarea name="message" rows="3"></textarea></label>
         <input type="text" name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
@@ -261,6 +255,8 @@
     <div class="footer__word" aria-hidden="true">KEMIA</div>
     <p class="mono footer__rights" data-i18n="foot.rights">© 2026 KEMIA. All rights reserved.</p>
   </footer>
+
+  <a href="#contact" class="mcta" data-mcta><span data-i18n="mcta.text">Start a project</span><i class="btn__dot"></i></a>
 
   <script type="module" src="./main.js"></script>
 </body>

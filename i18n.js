@@ -13,6 +13,11 @@ export const SERVICES = [
 export const T = {
   en: {
     'meta.title': 'KEMIA — AI studio in Cairo. We turn busywork into gold.',
+    'meta.desc': 'KEMIA is an AI studio in Cairo. We build WhatsApp AI agents, automations, 3D websites and content systems that work for your business 24/7, in Egyptian Arabic, English and Franco.',
+    'meta.ogTitle': 'KEMIA — We turn busywork into gold.',
+    'meta.ogDesc': 'AI agents, automations, websites and content, built in Cairo and working for your business 24/7.',
+    'nav.langLabel': 'اقرأ الموقع بالعربي',
+    'mcta.text': 'Start a project',
     'nav.services': 'Services',
     'nav.work': 'Work',
     'nav.process': 'Process',
@@ -170,6 +175,11 @@ export const T = {
 
   ar: {
     'meta.title': 'كيميا — استوديو ذكاء اصطناعي في القاهرة. بنحوّل الشغل المتكرر لدهب.',
+    'meta.desc': 'كيميا استوديو ذكاء اصطناعي في القاهرة. بنعمل مساعدين ذكيين على واتساب، أتمتة، مواقع 3D وأنظمة محتوى بتشتغل لبيزنسك 24/7 بالمصري والإنجليزي والفرانكو.',
+    'meta.ogTitle': 'كيميا — بنحوّل الشغل المتكرر لدهب.',
+    'meta.ogDesc': 'مساعدين ذكيين، أتمتة، مواقع ومحتوى، معمولين في القاهرة وشغالين لبيزنسك 24/7.',
+    'nav.langLabel': 'Read the site in English',
+    'mcta.text': 'ابدأ مشروعك',
     'nav.services': 'الخدمات',
     'nav.work': 'أعمالنا',
     'nav.process': 'طريقتنا',

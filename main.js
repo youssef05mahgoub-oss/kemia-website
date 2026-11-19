@@ -1,7 +1,7 @@
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Lenis from 'lenis';
-import { T, SERVICES } from './i18n.js';
+import { T } from './i18n.js';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -11,21 +11,19 @@ const isTouch = window.matchMedia('(hover: none), (pointer: coarse)').matches;
 const isMobile = () => window.innerWidth < 900;
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
-const store = {
-  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
-};
 
 /* ==========================================================
    Language
    ========================================================== */
-const params = new URLSearchParams(location.search);
-let lang = params.get('lang') || store.get('kemia-lang') || ((navigator.language || '').startsWith('ar') ? 'ar' : 'en');
-if (!T[lang]) lang = 'en';
+// Each language is its own pre-rendered page (/ and /ar/), so the page tells us its language.
+const lang = document.documentElement.lang === 'ar' ? 'ar' : 'en';
+// Old links used ?lang=ar on the English page: send them to the Arabic page.
+if (lang === 'en' && new URLSearchParams(location.search).get('lang') === 'ar') location.replace('./ar/');
 
 const GOLD_WORDS = ['gold', 'gold.', 'growth.', 'لدهب.', 'النمو.', 'دهب'];
 
-function splitWords(el, text) {
+function splitWords(el) {
+  const text = el.textContent.trim();
   el.innerHTML = '';
   text.split(/\s+/).forEach((w, i, arr) => {
     const s = document.createElement('span');
@@ -34,44 +32,6 @@ function splitWords(el, text) {
     el.appendChild(s);
     if (i < arr.length - 1) el.appendChild(document.createTextNode(' '));
   });
-}
-
-function renderServices() {
-  const t = T[lang];
-  $('[data-services]').innerHTML = SERVICES.map((s) => `
-    <article class="el" tabindex="0" data-cursor="${lang === 'ar' ? 'اكتشف' : 'Formula'}">
-      <div class="el__top"><span class="el__n">${s.n}</span><span>${t[`svc.${s.key}.tags`].split('·')[0].trim()}</span></div>
-      <div class="el__sym">${s.sym}</div>
-      <h3 class="el__name">${t[`svc.${s.key}.name`]}</h3>
-      <p class="el__line">${t[`svc.${s.key}.line`]}</p>
-      <div class="el__more"><p>${t[`svc.${s.key}.desc`]}</p><span class="el__tags">${t[`svc.${s.key}.tags`]}</span></div>
-    </article>`).join('');
-  const checked = new Set($$('[data-chips] input:checked').map((i) => i.value));
-  $('[data-chips]').innerHTML = SERVICES.map((s) => `
-    <label class="chip"><input type="checkbox" name="services" value="${s.key}" ${checked.has(s.key) ? 'checked' : ''}/><span><b>${s.sym}</b>${t[`svc.${s.key}.name`]}</span></label>`).join('');
-}
-
-function applyLang(next) {
-  lang = next;
-  const t = T[lang];
-  const html = document.documentElement;
-  html.lang = lang;
-  html.dir = lang === 'ar' ? 'rtl' : 'ltr';
-  document.title = t['meta.title'];
-  $$('[data-i18n]').forEach((el) => {
-    const v = t[el.dataset.i18n];
-    if (v == null) return;
-    if (el.classList.contains('split-words')) splitWords(el, v);
-    else el.textContent = v;
-  });
-  renderServices();
-  bindCursorTargets();
-  store.set('kemia-lang', lang);
-  try {
-    const u = new URL(location.href);
-    if (lang === 'ar') u.searchParams.set('lang', 'ar'); else u.searchParams.delete('lang');
-    history.replaceState(null, '', u);
-  } catch { /* sandboxed previews */ }
 }
 
 /* ==========================================================
@@ -90,7 +50,7 @@ $$('a[href^="#"]').forEach((a) => a.addEventListener('click', (e) => {
   const target = id === '#top' ? 0 : $(id);
   if (target === null) return;
   e.preventDefault();
-  document.body.classList.remove('menu-open');
+  setMenu(false);
   if (lenis) lenis.scrollTo(target, { offset: id === '#top' ? 0 : -20, duration: 1.6 });
   else (id === '#top' ? window.scrollTo({ top: 0 }) : target.scrollIntoView());
 }));
@@ -134,17 +94,38 @@ function setScene(name) {
   document.body.dataset.theme = s.dark > 0.5 ? 'dark' : 'light';
   document.body.dataset.scene = name;
   document.querySelector('meta[name="theme-color"]').setAttribute('content', s.dark > 0.5 ? '#0A0A0B' : '#EEECE6');
-  if (scene) scene.setState(s);
+  if (scene) {
+    scene.setState(s);
+    // Phones: the 3D sits faded behind text in most sections, so 30fps is plenty there.
+    scene.setFpsCap(isMobile() && !['hero', 'services', 'manifesto', 'footer'].includes(name) ? 30 : 0);
+  }
+}
+
+// Machines without a graphics card render WebGL in software, which is too slow for this
+// scene, so they get the page without the 3D (it still looks complete).
+function hasRealGPU() {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl');
+    if (!gl) return false;
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '';
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return !/swiftshader|llvmpipe|software|basic render/i.test(name);
+  } catch { return false; }
 }
 
 async function initScene() {
+  if (!new URLSearchParams(location.search).has('force3d') && !hasRealGPU()) {
+    document.documentElement.classList.add('no-webgl');
+    return false;
+  }
   try {
     const { createScene } = await import('./scene.js');
     scene = createScene($('#gl'), { reduced, mobile: isMobile() });
-    scene.setState(sceneState(currentScene));
+    setScene(currentScene);
     scene.snap();
     scene.intro = 0;
-    window.addEventListener('resize', () => { scene.resize(); scene.setState(sceneState(currentScene)); });
+    window.addEventListener('resize', () => { scene.resize(); setScene(currentScene); });
     if (!isTouch) {
       window.addEventListener('pointermove', (e) => {
         scene.setPointer((e.clientX / window.innerWidth) * 2 - 1, (e.clientY / window.innerHeight) * 2 - 1);
@@ -238,29 +219,36 @@ function onScroll() {
 }
 window.addEventListener('scroll', onScroll, { passive: true });
 
-$('.nav__burger').addEventListener('click', () => {
-  const open = document.body.classList.toggle('menu-open');
+const menu = $('.menu');
+function setMenu(open) {
+  document.body.classList.toggle('menu-open', open);
   $('.nav__burger').setAttribute('aria-expanded', open);
-  $('.menu').setAttribute('aria-hidden', !open);
+  menu.inert = !open;
   if (lenis) open ? lenis.stop() : lenis.start();
-});
+  updateMcta();
+}
+$('.nav__burger').addEventListener('click', () => setMenu(!document.body.classList.contains('menu-open')));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('menu-open')) setMenu(false); });
 
-$$('[data-lang-toggle]').forEach((b) => b.addEventListener('click', () => {
-  const next = lang === 'en' ? 'ar' : 'en';
-  gsap.to('main, .footer', {
-    opacity: 0, duration: 0.25, onComplete: () => {
-      applyLang(next);
-      document.body.classList.remove('menu-open');
-      if (lenis) lenis.start();
-      ScrollTrigger.refresh();
-      fitWordmark();
-      setScene(currentScene);
-      gsap.to('main, .footer', { opacity: 1, duration: 0.4 });
-      // manifesto words: re-apply current progress
-      ScrollTrigger.getAll().forEach((st) => st.update && st.update());
-    },
+/* Phones: a "Start a project" bar that stays on screen, except while the hero
+   buttons or the contact form are already in view. */
+const mcta = $('[data-mcta]');
+const seen = { hero: true, contact: false, footer: false };
+function updateMcta() {
+  const show = isMobile() && !seen.hero && !seen.contact && !seen.footer && !document.body.classList.contains('menu-open');
+  mcta.classList.toggle('is-on', show);
+  mcta.tabIndex = show ? 0 : -1;
+}
+if ('IntersectionObserver' in window) {
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((en) => { seen[en.target.dataset.watch] = en.isIntersecting; });
+    updateMcta();
   });
-}));
+  [['.hero__ctas', 'hero'], ['#contact', 'contact'], ['.footer', 'footer']].forEach(([sel, key]) => {
+    const el = $(sel); el.dataset.watch = key; io.observe(el);
+  });
+}
+window.addEventListener('resize', updateMcta);
 
 const cursor = $('.cursor');
 const cursorLabel = $('.cursor__label');
@@ -295,22 +283,24 @@ if (!isTouch) {
 /* ==========================================================
    Wordmark fitting
    ========================================================== */
+let wordWidth = 0;
 function fitWordmark() {
-  ['.wordmark', '.footer__word'].forEach((sel) => {
-    const el = $(sel); if (!el) return;
-    el.style.fontSize = '100px';
-    const w = el.scrollWidth;
-    const avail = el.parentElement.clientWidth * (sel === '.wordmark' ? 1.0 : 0.98);
-    // measure natural text width with inline-flex
+  const fontIn = !document.fonts || document.fonts.check('900 100px "Archivo Variable"', 'KEMIA');
+  if (!wordWidth || !fontIn) {
     const probe = document.createElement('span');
     probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font:900 100px "Archivo Variable",sans-serif;font-stretch:125%;letter-spacing:-.05em';
     probe.textContent = 'KEMIA';
     document.body.appendChild(probe);
-    const natural = probe.getBoundingClientRect().width || w;
+    wordWidth = probe.getBoundingClientRect().width;
     probe.remove();
-    el.style.fontSize = `${Math.floor((avail / natural) * 100)}px`;
+  }
+  if (!wordWidth) return;
+  [['.wordmark', 1.0], ['.footer__word', 0.98]].forEach(([sel, k]) => {
+    const el = $(sel); if (!el) return;
+    el.style.fontSize = `${Math.floor(((el.parentElement.clientWidth * k) / wordWidth) * 100)}px`;
   });
 }
+window.addEventListener('resize', () => { fitWordmark(); });
 
 /* ==========================================================
    WhatsApp demo
@@ -419,17 +409,21 @@ form.addEventListener('submit', async (e) => {
    Boot: loader -> intro
    ========================================================== */
 async function boot() {
-  applyLang(lang);
-  fitWordmark();
+  splitWords($('.manifesto__text'));
+  bindCursorTargets();
   const pct = $('.loader__pct');
   const bar = $('.loader__bar i');
   const prog = { v: 0 };
-  const counting = gsap.to(prog, {
-    v: 92, duration: reduced ? 0.2 : 1.6, ease: 'power2.inOut',
+  gsap.to(prog, {
+    v: 90, duration: 0.9, ease: 'power2.out',
     onUpdate: () => { pct.textContent = Math.round(prog.v); bar.style.width = `${prog.v}%`; },
   });
-  const fontsReady = Promise.race([document.fonts ? document.fonts.ready : Promise.resolve(), new Promise((r) => setTimeout(r, 2500))]);
-  const [hasGL] = await Promise.all([fontsReady.then(initScene), counting]);
+  // Reveal as soon as the fonts are in (never wait more than ~1s); the 3D loads alongside.
+  const timeout = (ms) => new Promise((r) => setTimeout(r, ms));
+  const wordFont = document.fonts ? document.fonts.load('900 100px "Archivo Variable"', 'KEMIA') : Promise.resolve();
+  await Promise.race([Promise.all([document.fonts ? document.fonts.ready : null, wordFont]), timeout(1000)]);
+  // If the display font arrives after the reveal, re-fit the wordmarks once it does.
+  wordFont.then(() => { wordWidth = 0; fitWordmark(); }).catch(() => {});
   fitWordmark();
   pct.textContent = '100'; bar.style.width = '100%';
 
@@ -437,12 +431,19 @@ async function boot() {
   setScene('hero');
 
   const tl = gsap.timeline({ defaults: { ease: 'expo.out' } });
-  tl.to('.loader', { clipPath: 'inset(0 0 100% 0)', duration: reduced ? 0.2 : 1.1, ease: 'expo.inOut' }, 0.15)
+  tl.to('.loader', { clipPath: 'inset(0 0 100% 0)', duration: reduced ? 0.2 : 0.8, ease: 'expo.inOut' }, 0)
     .add(() => { document.body.classList.remove('is-loading'); $('.loader').style.display = 'none'; if (lenis) lenis.start(); })
-    .from('.wordmark span', { yPercent: 110, duration: 1.4, stagger: 0.06 }, 0.55)
-    .from('.hero__title .line > *', { yPercent: 110, duration: 1.3, stagger: 0.09 }, 0.7)
-    .from('.kicker, .hero__sub, .hero__ctas, .hero__stat > *, .hero__meta, .nav > *', { y: 24, opacity: 0, duration: 1.1, stagger: 0.04 }, 0.9);
-  if (hasGL && scene) tl.to(scene, { intro: 1, duration: reduced ? 0.2 : 2.4, ease: 'power3.out' }, 0.45);
+    .from('.wordmark span', { yPercent: 110, duration: 1.3, stagger: 0.05 }, 0.3)
+    .from('.hero__title .line > *', { yPercent: 110, duration: 1.2, stagger: 0.08 }, 0.4)
+    .from('.kicker, .hero__sub, .hero__ctas, .hero__stat > *, .hero__meta, .nav > *', { y: 24, opacity: 0, duration: 1, stagger: 0.04 }, 0.55);
+  // The 3D starts once the page is showing, so building it never delays the first paint.
+  tl.add(() => {
+    // Wait two frames so the revealed page paints before the 3D compiles its shaders.
+    requestAnimationFrame(() => requestAnimationFrame(async () => {
+      const ok = await initScene();
+      if (ok && scene) gsap.to(scene, { intro: 1, duration: reduced ? 0.2 : 2.2, ease: 'power3.out' });
+    }));
+  }, reduced ? 0.25 : 0.85);
 }
 
 boot();

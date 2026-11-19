@@ -30,7 +30,7 @@ function glyphTexture(text, fg) {
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   const size = text.length > 2 ? 86 : 118;
-  g.font = `800 ${size}px "Archivo Variable", "Alexandria Variable", "Arial Black", sans-serif`;
+  g.font = `800 ${size}px "Archivo Variable", "Arial Black", sans-serif`;
   g.fillText(text, 128, 136);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -45,7 +45,16 @@ export function createScene(canvas, { reduced = false, mobile = false } = {}) {
   renderer.toneMappingExposure = 1.05;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   const maxDpr = mobile ? 1.5 : 1.75;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxDpr));
+  // Software-rendered WebGL (no graphics card available) is slow for everyone, so on
+  // those machines the scene draws only briefly after something changes.
+  let softwareGL = false;
+  try {
+    const gl = renderer.getContext();
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    softwareGL = /swiftshader|llvmpipe|software|basic render/i.test(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '');
+  } catch { /* ignore */ }
+  const idleWhenStill = reduced || softwareGL;
+  renderer.setPixelRatio(softwareGL ? 1 : Math.min(window.devicePixelRatio || 1, maxDpr));
 
   const scene = new THREE.Scene();
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -401,15 +410,47 @@ export function createScene(canvas, { reduced = false, mobile = false } = {}) {
     renderer.render(scene, camera);
   };
 
+  // Render loop. It stops while the tab is hidden, can be capped (e.g. 30fps behind text on
+  // phones), drops resolution on slow devices, and with reduced motion it only renders
+  // while something is actually changing.
   let raf = 0;
-  let running = true;
-  const loop = () => { if (running) frame(); raf = requestAnimationFrame(loop); };
-  loop();
+  let running = !document.hidden;
+  let sectionCap = 0; // set per section from main.js
+  let autoCap = 0;    // set here if the device turns out to be slow
+  let lastFrame = 0;
+  let wake = 1; // seconds of rendering left after a state change (reduced motion)
+  const samples = [];
+  let tuned = false;
+  const loop = (now) => {
+    raf = requestAnimationFrame(loop);
+    if (!running) return;
+    const cap = autoCap || sectionCap;
+    if (cap && now - lastFrame < 1000 / cap - 2) return;
+    if (idleWhenStill && cur.intro >= 1 && wake <= 0) return;
+    if (lastFrame && !tuned && !cap && cur.intro >= 1) {
+      samples.push(now - lastFrame);
+      if (samples.length >= 90) {
+        tuned = true;
+        samples.sort((a, b) => a - b);
+        const median = samples[45];
+        if (median > 22) { // under ~45fps: lighten the load
+          renderer.setPixelRatio(1);
+          resize();
+          if (median > 30) autoCap = 30;
+        }
+      }
+    }
+    lastFrame = now;
+    wake -= 1 / 60;
+    frame();
+  };
+  raf = requestAnimationFrame(loop);
   document.addEventListener('visibilitychange', () => { running = !document.hidden; clock.getDelta(); });
 
   return {
-    setState(s) { Object.assign(target, s); },
-    setPointer(x, y) { pointer.tx = x; pointer.ty = y; },
+    setState(s) { Object.assign(target, s); wake = softwareGL ? 0.8 : 2.5; },
+    setFpsCap(fps) { sectionCap = fps; },
+    setPointer(x, y) { pointer.tx = x; pointer.ty = y; if (idleWhenStill) wake = Math.max(wake, 0.3); },
     setVelocity(v) { velocity = Math.max(-80, Math.min(80, v)); },
     get intro() { return cur.intro; },
     set intro(v) { cur.intro = v; },

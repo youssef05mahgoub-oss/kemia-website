@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 
 const browser = await chromium.launch({ channel: 'chrome', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 1 });
-await page.goto('http://localhost:4173/', { waitUntil: 'networkidle' });
+await page.goto('http://localhost:4173/?force3d', { waitUntil: 'networkidle' });
 await page.waitForTimeout(6000);
 await page.addStyleTag({ content: '.nav,.hero__meta,.cursor{display:none!important}' });
 await page.waitForTimeout(300);
