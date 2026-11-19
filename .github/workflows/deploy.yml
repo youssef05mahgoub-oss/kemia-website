@@ -28,7 +28,6 @@ jobs:
       - name: Render social share image
         run: |
           npm install --no-save --no-audit --no-fund playwright@1.48.2
-          npx playwright install --with-deps chromium
           (npx vite preview --port 4173 --strictPort &) && sleep 4
           node og.mjs
       - uses: actions/upload-pages-artifact@v3
