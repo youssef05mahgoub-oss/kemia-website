@@ -124,11 +124,13 @@ async function initScene() {
     scene.snap();
     scene.intro = 0;
     window.addEventListener('resize', () => { scene.resize(); setScene(currentScene); });
-    if (!isTouch) {
-      window.addEventListener('pointermove', (e) => {
-        scene.setPointer((e.clientX / window.innerWidth) * 2 - 1, (e.clientY / window.innerHeight) * 2 - 1);
-      }, { passive: true });
-    }
+    // Pointer (mouse or finger) drives the parallax and lets the particles part around it.
+    const toScene = (x, y) => scene.setPointer((x / window.innerWidth) * 2 - 1, (y / window.innerHeight) * 2 - 1);
+    window.addEventListener('pointermove', (e) => toScene(e.clientX, e.clientY), { passive: true });
+    window.addEventListener('touchstart', (e) => { const t = e.touches[0]; if (t) toScene(t.clientX, t.clientY); }, { passive: true });
+    window.addEventListener('touchmove', (e) => { const t = e.touches[0]; if (t) toScene(t.clientX, t.clientY); }, { passive: true });
+    window.addEventListener('touchend', () => scene.releasePointer(), { passive: true });
+    document.documentElement.addEventListener('mouseleave', () => scene.releasePointer());
     if (lenis) lenis.on('scroll', ({ velocity }) => scene.setVelocity(velocity));
     return true;
   } catch (err) {
