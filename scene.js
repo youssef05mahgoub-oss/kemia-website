@@ -561,13 +561,13 @@ export function createScene(canvas, { reduced = false, mobile = false, debug = f
         if (vn < 0) u.vel.addScaledVector(v3, -vn);
       }
     };
-    for (let iter = 0; iter < 6; iter++) {
+    for (let iter = 0; iter < 10; iter++) {
       for (let a = 0; a < cubes.length; a++) {
         const ua = cubes[a].userData;
         for (let b = a + 1; b < cubes.length; b++) {
           const ub = cubes[b].userData;
           v3.subVectors(ua.pos, ub.pos);
-          const L = v3.length(); const min = ua.radius + ub.radius + 0.012;
+          const L = v3.length(); const min = ua.radius + ub.radius + 0.035;
           if (L < min) {
             v3.divideScalar(Math.max(L, 1e-5)).multiplyScalar((min - L) / 2);
             ua.pos.add(v3); ub.pos.sub(v3);
@@ -576,7 +576,7 @@ export function createScene(canvas, { reduced = false, mobile = false, debug = f
       }
       for (let a = 0; a < cubes.length; a++) {
         const ua = cubes[a].userData;
-        for (const ch of chains) { const lr = LINK.bound * ch.scale * iS + ua.radius + 0.02; for (let i = 0; i < ch.N; i++) pushOut(ua, ch.pts[i], lr); }
+        for (const ch of chains) { const lr = LINK.bound * ch.scale * iS + ua.radius + 0.035; for (let i = 0; i < ch.N; i++) pushOut(ua, ch.pts[i], lr); }
         pushOut(ua, coreC, coreR + ua.radius);
       }
     }
@@ -618,8 +618,8 @@ export function createScene(canvas, { reduced = false, mobile = false, debug = f
         if (L < min) { v3.divideScalar(Math.max(L, 1e-5)).multiplyScalar(min - L); pt.pos.add(v3); pt.off.add(v3); }
       };
       for (let it = 0; it < 3; it++) {
-        for (const ch of chains) { const lr = LINK.bound * ch.scale * iS + pt.r + 0.01; for (let i = 0; i < ch.N; i += 1) avoid(ch.pts[i], lr); }
-        for (const c of cubes) avoid(c.userData.pos, c.userData.radius + pt.r + 0.01);
+        for (const ch of chains) { const lr = LINK.bound * ch.scale * iS + pt.r + 0.02; for (let i = 0; i < ch.N; i += 1) avoid(ch.pts[i], lr); }
+        for (const c of cubes) avoid(c.userData.pos, c.userData.radius + pt.r + 0.02);
         avoid(coreC, coreR + pt.r);
       }
       // If a particle is boxed in with nowhere to go, it briefly shrinks away instead.
