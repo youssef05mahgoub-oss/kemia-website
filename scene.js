@@ -51,7 +51,7 @@ class Spring {
 }
 
 /* ---------- Procedural micro-surface texture (roughness / bump variation) ---------- */
-function noiseTexture(size = 256, seed = 3) {
+function noiseTexture(size = 256, seed = 3, lo = 0.84, hi = 1) {
   const r = rng(seed);
   const c = document.createElement('canvas'); c.width = c.height = size;
   const g = c.getContext('2d');
@@ -72,7 +72,7 @@ function noiseTexture(size = 256, seed = 3) {
         v += (a + (b - a) * sy) * o.w;
       }
       const p = (y * size + x) * 4;
-      const byte = Math.round(v * 255);
+      const byte = Math.round((lo + (hi - lo) * v) * 255);
       img.data[p] = img.data[p + 1] = img.data[p + 2] = byte; img.data[p + 3] = 255;
     }
   }
@@ -204,8 +204,10 @@ export function createScene(canvas, { reduced = false, mobile = false, debug = f
   const root = new THREE.Group();
   scene.add(root);
 
-  const micro = noiseTexture(256, 11);
+  const micro = noiseTexture(256, 11);          // roughness variation (±8%)
   micro.repeat.set(2, 2);
+  const grain = noiseTexture(256, 5, 0, 1);       // fine surface texture for plastic bump
+  grain.repeat.set(6, 6);
 
   /* ---------------- Core: polished spiked stone ---------------- */
   const core = new THREE.Group();
@@ -249,13 +251,13 @@ export function createScene(canvas, { reduced = false, mobile = false, debug = f
   const capGeo = new RoundedBoxGeometry(CUBE.size, CUBE.size, CUBE.size, mobile ? 5 : 8, 0.085);
   const legendGeo = new THREE.PlaneGeometry(0.36, 0.36);
   const plastic = (color, roughness, extra = {}) => new THREE.MeshPhysicalMaterial({
-    color, roughness, roughnessMap: micro, bumpMap: micro, bumpScale: 0.06, clearcoat: 0.35, clearcoatRoughness: 0.35, ...extra,
+    color, roughness, roughnessMap: micro, bumpMap: grain, bumpScale: 0.012, clearcoat: 0.35, clearcoatRoughness: 0.35, ...extra,
   });
   const capMats = {
     ink: plastic(C.ink, 0.5),
     paper: plastic(C.paper, 0.55, { sheen: 0.3, sheenRoughness: 0.8, sheenColor: new THREE.Color('#ffffff') }),
     molten: plastic(C.molten, 0.42, { clearcoat: 0.6 }),
-    gold: new THREE.MeshPhysicalMaterial({ color: C.gold, metalness: 1, roughness: 0.24, roughnessMap: micro, anisotropy: 0.7, anisotropyRotation: Math.PI / 2 }),
+    gold: new THREE.MeshPhysicalMaterial({ color: C.gold, metalness: 1, roughness: 0.2, anisotropy: 0.5, anisotropyRotation: Math.PI / 2 }),
   };
   const legendColor = { ink: '#E9E7E1', paper: '#1A1B1E', molten: '#FFF3EC', gold: '#3A2A08' };
   const glyphs = ['Ag', 'Au', 'AI', '✦', '24/7', '⌘', '↵', 'K', '△', '@', '◯', 'Wf', 'Cl', 'Br'];
@@ -507,30 +509,33 @@ export function createScene(canvas, { reduced = false, mobile = false, debug = f
     });
     // Collision pass: caps vs core, chains and each other (positions + velocities).
     const coreR = (R.spikes + 0.14) * cs;
+    const pushOut = (u, from, minDist) => {
+      v3.subVectors(u.pos, from);
+      const L = v3.length();
+      if (L < minDist) {
+        v3.divideScalar(Math.max(L, 1e-5));
+        u.pos.addScaledVector(v3, minDist - L);
+        const vn = u.vel.dot(v3);
+        if (vn < 0) u.vel.addScaledVector(v3, -vn);
+      }
+    };
     for (let iter = 0; iter < 6; iter++) {
       for (let a = 0; a < cubes.length; a++) {
         const ua = cubes[a].userData;
-        const push = (from, minDist) => {
-          v3.subVectors(ua.pos, from);
-          const L = v3.length();
-          if (L < minDist) {
-            v3.divideScalar(Math.max(L, 1e-5));
-            ua.pos.addScaledVector(v3, minDist - L);
-            const vn = ua.vel.dot(v3);
-            if (vn < 0) ua.vel.addScaledVector(v3, -vn);
-          }
-        };
-        for (const ch of chains) { const lr = LINK.bound * ch.scale * iS + ua.radius + 0.01; for (let i = 0; i < ch.N; i++) push(ch.pts[i], lr); }
         for (let b = a + 1; b < cubes.length; b++) {
           const ub = cubes[b].userData;
           v3.subVectors(ua.pos, ub.pos);
-          const L = v3.length(); const min = ua.radius + ub.radius + 0.01;
+          const L = v3.length(); const min = ua.radius + ub.radius + 0.012;
           if (L < min) {
             v3.divideScalar(Math.max(L, 1e-5)).multiplyScalar((min - L) / 2);
             ua.pos.add(v3); ub.pos.sub(v3);
           }
         }
-        push(coreC, coreR + ua.radius);
+      }
+      for (let a = 0; a < cubes.length; a++) {
+        const ua = cubes[a].userData;
+        for (const ch of chains) { const lr = LINK.bound * ch.scale * iS + ua.radius + 0.02; for (let i = 0; i < ch.N; i++) pushOut(ua, ch.pts[i], lr); }
+        pushOut(ua, coreC, coreR + ua.radius);
       }
     }
     cubes.forEach((m) => {
