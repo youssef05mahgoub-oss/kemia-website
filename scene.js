@@ -386,6 +386,7 @@ export function createScene(canvas, { reduced = false, mobile = false, debug = f
   const cur = { intro: reduced ? 1 : 0 };
   const pointer = { x: 0, y: 0 };
   let pointerActive = false;
+  let pointerLinger = 0; // a tap keeps pushing for a moment after the finger lifts
   let velocity = 0;
   let halfW = 1, halfH = 1, fit = 1;
 
@@ -589,6 +590,7 @@ export function createScene(canvas, { reduced = false, mobile = false, debug = f
 
     /* ---- Particles ---- */
     drift += velocity * 0.0009 * dt * 60;
+    pointerLinger = Math.max(0, pointerLinger - dt);
     const ps = Math.min(halfW, halfH) / 3;             // keep their on-screen size steady across screens
     const pNdc = v2.set(pointer.x, -pointer.y, 0);
     for (const pt of particles) {
@@ -603,7 +605,7 @@ export function createScene(canvas, { reduced = false, mobile = false, debug = f
       v3.copy(pt.pos).project(camera);
       const dx = (v3.x - pNdc.x) * camera.aspect, dy = v3.y - pNdc.y;
       const dist = Math.hypot(dx, dy);
-      if (pointerActive && dist < 0.28) {
+      if ((pointerActive || pointerLinger > 0) && dist < 0.28) {
         const f = (1 - dist / 0.28) * 14;
         pt.vel.x += (dx / (dist + 1e-4)) * f * dt;
         pt.vel.y += (dy / (dist + 1e-4)) * f * dt;
@@ -700,7 +702,7 @@ export function createScene(canvas, { reduced = false, mobile = false, debug = f
     setState(s) { Object.assign(target, s); wake = 3; },
     setFpsCap(fps) { fpsCap = fps; },
     setPointer(x, y) { pointer.x = x; pointer.y = y; pointerActive = true; if (reduced) wake = Math.max(wake, 1); },
-    releasePointer() { pointerActive = false; },
+    releasePointer() { pointerActive = false; pointerLinger = 0.6; },
     setVelocity(v) { velocity = Math.max(-80, Math.min(80, v)); },
     get intro() { return cur.intro; },
     set intro(v) { cur.intro = v; },
