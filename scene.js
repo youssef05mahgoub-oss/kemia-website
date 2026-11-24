@@ -1,109 +1,228 @@
-// KEMIA — the "philosopher's stone" 3D scene.
-// A chrome spiked core, a ring of keycap cubes, two interlocked chains that
-// morph between wrapping the core and sweeping across the screen, and debris.
+// KEMIA — the "philosopher's stone" 3D scene, product-shot edition.
+//
+// Realism: a photo-studio light rig (softboxes + strip lights) baked into the environment,
+// physically based materials with micro-roughness, smooth high-detail geometry, real
+// stadium-shaped chain links and soft shadows.
+//
+// No interpenetration: every part lives in its own spherical shell around the core
+// (spikes < chain A < chain B < keycaps), and a collision pass each frame keeps keycaps
+// and chains apart while they move between the "wrapped" and "scattered" layouts.
+//
+// Motion: critically damped springs (weight, no wobble), slow inertial spin.
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const C = {
-  paper: new THREE.Color('#EEECE6'),
-  ink: new THREE.Color('#121214'),
+  paper: new THREE.Color('#ECEAE4'),
+  ink: new THREE.Color('#141518'),
   molten: new THREE.Color('#FF4A1C'),
-  gold: new THREE.Color('#D8A93B'),
+  gold: new THREE.Color('#E2B04A'),
   elixir: new THREE.Color('#8AF5FF'),
-  chrome: new THREE.Color('#D4D7DC'),
+  chrome: new THREE.Color('#F1F2F4'),
+  gunmetal: new THREE.Color('#6B6F76'),
+  blackChrome: new THREE.Color('#2B2D31'),
 };
 
-const damp = (a, b, lambda, dt) => a + (b - a) * (1 - Math.exp(-lambda * dt));
-const smooth = (t) => t * t * (3 - 2 * t);
-const easeOutBack = (t) => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+// Shell radii in "core units" (multiplied by the core's scale). Keeping each family of
+// objects in its own band is what guarantees nothing passes through anything else.
+const R = {
+  spikes: 1.32,  // tips of the longest spikes
+  chainA: 1.64,  // centre-line of the inner chain (links reach ±0.14)
+  chainB: 2.06,  // centre-line of the outer chain
+  cubes: 2.86,   // centre of the keycaps (each reaches ±0.47)
+  outer: 3.3,   // whole assembly, used to fit it on screen
+};
+const LINK = { straight: 0.12, radius: 0.1, tube: 0.036, pitch: 0.3, bound: 0.26 };
+const CUBE = { size: 0.52, bound: 0.455 }; // bound = half-diagonal of a unit keycap
 
 // Deterministic random so the composition is the same on every visit.
 function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 
-function glyphTexture(text, fg) {
-  const c = document.createElement('canvas');
-  c.width = c.height = 256;
+/* ---------- Critically damped spring (smooth start, smooth stop, no overshoot) ---------- */
+class Spring {
+  constructor(value, stiffness = 16) { this.x = value; this.v = 0; this.k = stiffness; }
+  step(target, dt) {
+    const k = this.k; const c = 2 * Math.sqrt(k);
+    this.v += (k * (target - this.x) - c * this.v) * dt;
+    this.x += this.v * dt;
+    return this.x;
+  }
+}
+
+/* ---------- Procedural micro-surface texture (roughness / bump variation) ---------- */
+function noiseTexture(size = 256, seed = 3) {
+  const r = rng(seed);
+  const c = document.createElement('canvas'); c.width = c.height = size;
   const g = c.getContext('2d');
-  g.fillStyle = fg;
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  const size = text.length > 2 ? 86 : 118;
-  g.font = `800 ${size}px "Archivo Variable", "Arial Black", sans-serif`;
-  g.fillText(text, 128, 136);
+  const img = g.createImageData(size, size);
+  // layered value noise
+  const grid = (n) => { const a = []; for (let i = 0; i < (n + 1) * (n + 1); i++) a.push(r()); return a; };
+  const octaves = [[8, 0.5], [32, 0.3], [128, 0.2]].map(([n, w]) => ({ n, w, g: grid(n) }));
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let v = 0;
+      for (const o of octaves) {
+        const fx = (x / size) * o.n, fy = (y / size) * o.n;
+        const ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy;
+        const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+        const at = (i, j) => o.g[(j % (o.n + 1)) * (o.n + 1) + (i % (o.n + 1))];
+        const a = at(ix, iy) + (at(ix + 1, iy) - at(ix, iy)) * sx;
+        const b = at(ix, iy + 1) + (at(ix + 1, iy + 1) - at(ix, iy + 1)) * sx;
+        v += (a + (b - a) * sy) * o.w;
+      }
+      const p = (y * size + x) * 4;
+      const byte = Math.round(v * 255);
+      img.data[p] = img.data[p + 1] = img.data[p + 2] = byte; img.data[p + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
   const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }
 
-export function createScene(canvas, { reduced = false, mobile = false } = {}) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !mobile, alpha: true, powerPreference: 'high-performance' });
+/* ---------- Keycap legends, printed onto the cap (lit, not glowing) ---------- */
+function glyphTexture(text) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = `800 ${text.length > 2 ? 82 : 112}px "Archivo Variable", "Arial Black", sans-serif`;
+  g.fillText(text, 128, 136);
+  const t = new THREE.CanvasTexture(c);
+  t.anisotropy = 8;
+  return t;
+}
+
+/* ---------- Photo-studio environment: what the chrome reflects ---------- */
+function studioEnvironment(renderer) {
+  const env = new THREE.Scene();
+  // Backdrop: a sphere with a soft vertical gradient (dark floor → mid-grey horizon → dark top)
+  const sky = new THREE.SphereGeometry(30, 48, 24);
+  const col = [];
+  const pos = sky.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i) / 30;
+    const v = y < 0 ? 0.035 + 0.06 * (1 + y) : 0.09 - 0.07 * y;
+    col.push(v, v, v * 1.04);
+  }
+  sky.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  env.add(new THREE.Mesh(sky, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true })));
+
+  const light = (w, h, intensity, position, color = 0xffffff) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity), side: THREE.DoubleSide }));
+    m.position.set(...position);
+    m.lookAt(0, 0, 0);
+    env.add(m);
+  };
+  light(9, 6, 2.6, [0, 9, 1]);                  // big overhead softbox
+  light(4, 7, 3.4, [-7, 2, 5]);                 // key softbox, front-left
+  light(0.7, 10, 6.0, [7, 0, 2]);               // strip light, right
+  light(0.7, 10, 4.0, [-6, 0, -5]);             // strip light, back-left
+  light(10, 1.2, 1.8, [0, -1.5, -9]);           // low rim panel behind
+  light(2.2, 2.2, 1.6, [4, -4, 6], 0xff7a4a);   // small warm card (brand accent in reflections)
+  light(6, 1.5, 0.9, [0, -8, 3]);               // faint floor bounce
+
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const tex = pmrem.fromScene(env, 0.02).texture;
+  pmrem.dispose();
+  env.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+  return tex;
+}
+
+/* ---------- Geometry ---------- */
+// A real chain link: a round tube following a stadium (two half circles + two straights).
+class StadiumCurve extends THREE.Curve {
+  getPoint(t, out = new THREE.Vector3()) {
+    const { straight: s, radius: r } = LINK;
+    const L = 4 * s + 2 * Math.PI * r; // perimeter
+    let d = t * L;
+    if (d < 2 * s) return out.set(-s + d, r, 0);
+    d -= 2 * s;
+    if (d < Math.PI * r) { const a = Math.PI / 2 - d / r; return out.set(s + r * Math.cos(a), r * Math.sin(a), 0); }
+    d -= Math.PI * r;
+    if (d < 2 * s) return out.set(s - d, -r, 0);
+    d -= 2 * s;
+    const a = -Math.PI / 2 - d / r; return out.set(-s + r * Math.cos(a), r * Math.sin(a), 0);
+  }
+}
+
+// A spike with a gently curved taper and a rounded tip.
+function spikeGeometry(length, baseRadius, segments) {
+  const pts = [];
+  const n = 24;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const rad = baseRadius * Math.pow(1 - t, 1.5) + 0.006 * Math.sin(t * Math.PI * 0.5);
+    pts.push(new THREE.Vector2(Math.max(rad, 0.004), t * length));
+  }
+  pts.push(new THREE.Vector2(0, length + 0.004));
+  return new THREE.LatheGeometry(pts, segments);
+}
+
+export function createScene(canvas, { reduced = false, mobile = false, debug = false } = {}) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
   renderer.setClearColor(0x000000, 0);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMapping = THREE.NeutralToneMapping; // keeps brand colours true, product-shot contrast
+  renderer.toneMappingExposure = 1.0;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  const maxDpr = mobile ? 1.5 : 1.75;
-  // Software-rendered WebGL (no graphics card available) is slow for everyone, so on
-  // those machines the scene draws only briefly after something changes.
-  let softwareGL = false;
-  try {
-    const gl = renderer.getContext();
-    const ext = gl.getExtension('WEBGL_debug_renderer_info');
-    softwareGL = /swiftshader|llvmpipe|software|basic render/i.test(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '');
-  } catch { /* ignore */ }
-  const idleWhenStill = reduced || softwareGL;
-  renderer.setPixelRatio(softwareGL ? 1 : Math.min(window.devicePixelRatio || 1, maxDpr));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  // Resolution: phones get full retina sharpness; slow devices step down automatically.
+  const dprSteps = mobile ? [2, 1.6, 1.25, 1] : [1.75, 1.4, 1.1, 1];
+  let dprIndex = 0;
+  const applyDpr = () => renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, dprSteps[dprIndex]));
+  applyDpr();
 
   const scene = new THREE.Scene();
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  pmrem.dispose();
+  scene.environment = studioEnvironment(renderer);
 
-  const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
-  camera.position.set(0, 0, 10);
+  // A longer lens (narrow field of view) = less distortion, like a product photo.
+  const camera = new THREE.PerspectiveCamera(26, 1, 0.5, 60);
+  camera.position.set(0, 0, 13.5);
 
-  // Lights (on top of the environment) — a warm key and a molten rim.
-  const key = new THREE.DirectionalLight(0xffffff, 1.6);
-  key.position.set(3, 5, 6);
-  scene.add(key);
-  const rim = new THREE.PointLight(C.molten, 30, 14, 1.6);
-  rim.position.set(-2.5, -1.5, -2.5);
+  // Key light (casts the soft shadows), a cool rim for dark sections, a warm low fill.
+  const key = new THREE.DirectionalLight(0xffffff, 1.4);
+  key.position.set(4, 7, 8);
+  key.castShadow = true;
+  key.shadow.mapSize.setScalar(mobile ? 1024 : 2048);
+  key.shadow.bias = -0.0003;
+  key.shadow.normalBias = 0.025;
+  key.shadow.radius = 4;
+  scene.add(key, key.target);
+  const rim = new THREE.DirectionalLight(C.elixir, 0);
+  rim.position.set(-6, 3, -6);
   scene.add(rim);
-  const glow = new THREE.PointLight(C.elixir, 0, 16, 1.4);
-  glow.position.set(2.5, 2, 3);
-  scene.add(glow);
+  const warm = new THREE.PointLight(C.molten, 0, 30, 2);
+  warm.position.set(3, -4, 6);
+  scene.add(warm);
 
   const root = new THREE.Group();
   scene.add(root);
 
-  /* ---------------- Core: the philosopher's stone ---------------- */
+  const micro = noiseTexture(256, 11);
+  micro.repeat.set(2, 2);
+
+  /* ---------------- Core: polished spiked stone ---------------- */
   const core = new THREE.Group();
   root.add(core);
-
   const chromeMat = new THREE.MeshPhysicalMaterial({
-    color: C.chrome, metalness: 1, roughness: 0.14, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.25, flatShading: true,
+    color: C.chrome, metalness: 1, roughness: 0.07, roughnessMap: micro, envMapIntensity: 1.15,
   });
-  const darkChrome = new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color('#3a3c40'), metalness: 1, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.1, envMapIntensity: 1.1, flatShading: true,
+  const blackChromeMat = new THREE.MeshPhysicalMaterial({
+    color: C.blackChrome, metalness: 1, roughness: 0.2, roughnessMap: micro, clearcoat: 1, clearcoatRoughness: 0.05,
   });
-
-  const heart = new THREE.Mesh(new THREE.IcosahedronGeometry(0.62, 1), darkChrome);
+  const heart = new THREE.Mesh(new THREE.SphereGeometry(0.6, mobile ? 64 : 96, mobile ? 48 : 64), blackChromeMat);
+  heart.castShadow = heart.receiveShadow = true;
   core.add(heart);
 
-  const spikeParts = [];
   const up = new THREE.Vector3(0, 1, 0);
-  const addSpikes = (dirs, h, r, base) => {
-    dirs.forEach((d) => {
-      const g = new THREE.ConeGeometry(r, h, 6, 1);
-      const q = new THREE.Quaternion().setFromUnitVectors(up, d);
-      const m = new THREE.Matrix4().compose(d.clone().multiplyScalar(base + h / 2), q, new THREE.Vector3(1, 1, 1));
-      g.applyMatrix4(m);
-      spikeParts.push(g);
-    });
-  };
-  const dirsFrom = (geo) => {
+  const spikeParts = [];
+  const directions = (geo) => {
     const p = geo.attributes.position; const seen = new Map();
     for (let i = 0; i < p.count; i++) {
       const v = new THREE.Vector3().fromBufferAttribute(p, i).normalize();
@@ -112,134 +231,126 @@ export function createScene(canvas, { reduced = false, mobile = false } = {}) {
     }
     return [...seen.values()];
   };
-  addSpikes(dirsFrom(new THREE.IcosahedronGeometry(1, 0)), 1.05, 0.2, 0.42);
-  addSpikes(dirsFrom(new THREE.DodecahedronGeometry(1, 0)), 0.55, 0.14, 0.45);
+  const addSpikes = (dirs, length, base, start) => {
+    dirs.forEach((d) => {
+      const g = spikeGeometry(length, base, mobile ? 24 : 40);
+      g.applyMatrix4(new THREE.Matrix4().compose(d.clone().multiplyScalar(start), new THREE.Quaternion().setFromUnitVectors(up, d), new THREE.Vector3(1, 1, 1)));
+      spikeParts.push(g);
+    });
+  };
+  addSpikes(directions(new THREE.IcosahedronGeometry(1, 0)), R.spikes - 0.46, 0.17, 0.46);
+  addSpikes(directions(new THREE.DodecahedronGeometry(1, 0)), 0.5, 0.11, 0.5);
   const spikes = new THREE.Mesh(mergeGeometries(spikeParts), chromeMat);
+  spikes.castShadow = spikes.receiveShadow = true;
   core.add(spikes);
 
-  // Molten halo ring
-  const haloMat = new THREE.MeshStandardMaterial({ color: C.molten, emissive: C.molten, emissiveIntensity: 1.4, roughness: 0.4 });
-  const halo = new THREE.Mesh(new THREE.TorusGeometry(1.32, 0.018, 8, 160), haloMat);
-  halo.rotation.set(1.25, 0.2, 0);
-  core.add(halo);
-
-  /* ---------------- Ring of keycap cubes ---------------- */
-  const ring = new THREE.Group();
-  root.add(ring);
-  const cubeGeo = new RoundedBoxGeometry(0.44, 0.44, 0.44, 4, 0.085);
-  const glyphGeo = new THREE.PlaneGeometry(0.34, 0.34);
-  const mats = {
-    ink: new THREE.MeshPhysicalMaterial({ color: C.ink, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.15, envMapIntensity: 0.9 }),
-    paper: new THREE.MeshPhysicalMaterial({ color: C.paper.clone(), roughness: 0.45, clearcoat: 0.6, emissive: C.elixir, emissiveIntensity: 0 }),
-    molten: new THREE.MeshPhysicalMaterial({ color: C.molten, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1, emissive: C.molten, emissiveIntensity: 0.08 }),
-    gold: new THREE.MeshPhysicalMaterial({ color: C.gold, metalness: 1, roughness: 0.24, clearcoat: 0.6, envMapIntensity: 1.2 }),
-  };
-  const glyphs = ['Ag', 'Au', 'AI', '✦', 'ع', '24/7', '⌘', '↵', 'K', '△', '@', '◯', 'ك', 'Wf'];
-  const glyphFg = { ink: '#EEECE6', paper: '#0C0C0D', molten: '#EEECE6', gold: '#0C0C0D' };
-  const texCache = new Map();
-  const getGlyphMat = (txt, kind) => {
-    const k = txt + kind;
-    if (!texCache.has(k)) texCache.set(k, new THREE.MeshBasicMaterial({ map: glyphTexture(txt, glyphFg[kind]), transparent: true, depthWrite: false }));
-    return texCache.get(k);
-  };
-
+  /* ---------------- Keycaps ---------------- */
   const rand = rng(7);
-  const kinds = ['ink', 'paper', 'molten', 'ink', 'paper', 'gold', 'ink', 'paper', 'molten', 'paper'];
-  const CUBES = mobile ? 20 : 28;
+  const capGeo = new RoundedBoxGeometry(CUBE.size, CUBE.size, CUBE.size, mobile ? 5 : 8, 0.085);
+  const legendGeo = new THREE.PlaneGeometry(0.36, 0.36);
+  const plastic = (color, roughness, extra = {}) => new THREE.MeshPhysicalMaterial({
+    color, roughness, roughnessMap: micro, bumpMap: micro, bumpScale: 0.06, clearcoat: 0.35, clearcoatRoughness: 0.35, ...extra,
+  });
+  const capMats = {
+    ink: plastic(C.ink, 0.5),
+    paper: plastic(C.paper, 0.55, { sheen: 0.3, sheenRoughness: 0.8, sheenColor: new THREE.Color('#ffffff') }),
+    molten: plastic(C.molten, 0.42, { clearcoat: 0.6 }),
+    gold: new THREE.MeshPhysicalMaterial({ color: C.gold, metalness: 1, roughness: 0.24, roughnessMap: micro, anisotropy: 0.7, anisotropyRotation: Math.PI / 2 }),
+  };
+  const legendColor = { ink: '#E9E7E1', paper: '#1A1B1E', molten: '#FFF3EC', gold: '#3A2A08' };
+  const glyphs = ['Ag', 'Au', 'AI', '✦', '24/7', '⌘', '↵', 'K', '△', '@', '◯', 'Wf', 'Cl', 'Br'];
+  const legendMats = new Map();
+  const legendMat = (txt, kind) => {
+    const k = txt + kind;
+    if (!legendMats.has(k)) {
+      legendMats.set(k, new THREE.MeshStandardMaterial({
+        color: new THREE.Color(legendColor[kind]), alphaMap: glyphTexture(txt), transparent: true, roughness: 0.6,
+        metalness: kind === 'gold' ? 0.6 : 0, polygonOffset: true, polygonOffsetFactor: -2, depthWrite: false,
+      }));
+    }
+    return legendMats.get(k);
+  };
+
+  const kinds = ['ink', 'paper', 'molten', 'paper', 'ink', 'gold', 'paper', 'ink', 'molten'];
+  const CUBES = mobile ? 12 : 15;
   const cubes = [];
+  const ringTilt = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.42, 0, 0.3));
   for (let i = 0; i < CUBES; i++) {
     const kind = kinds[i % kinds.length];
-    const m = new THREE.Mesh(cubeGeo, mats[kind]);
+    const m = new THREE.Mesh(capGeo, capMats[kind]);
+    m.castShadow = m.receiveShadow = true;
     if (i % 2 === 0) {
-      const gm = new THREE.Mesh(glyphGeo, getGlyphMat(glyphs[(i / 2) % glyphs.length], kind));
-      gm.position.z = 0.222;
-      m.add(gm);
+      const legend = new THREE.Mesh(legendGeo, legendMat(glyphs[(i / 2) % glyphs.length], kind));
+      legend.position.z = CUBE.size / 2 + 0.0015;
+      m.add(legend);
     }
-    const s = 0.7 + rand() * 0.55;
+    const s = 0.88 + rand() * 0.14;
+    // Ring slot: evenly spaced angles with small jitter, small latitude offset, kept on the shell.
+    const a = (i / CUBES) * Math.PI * 2 + (rand() - 0.5) * 0.12;
+    const lat = (rand() - 0.5) * 0.36;
+    const slot = new THREE.Vector3(Math.cos(a), lat, Math.sin(a)).normalize().multiplyScalar(R.cubes);
     m.userData = {
-      a: (i / CUBES) * Math.PI * 2 + (rand() - 0.5) * 0.18,
-      r: 2.15 + (rand() - 0.5) * 0.55,
-      y: (rand() - 0.5) * 0.55,
       s,
-      spin: new THREE.Vector3(rand() - 0.5, rand() - 0.5, rand() - 0.5).multiplyScalar(1.2),
-      rot0: new THREE.Euler(rand() * 6, rand() * 6, rand() * 6),
-      scatter: new THREE.Vector3((rand() * 2 - 1), -1 + rand() * 1.45, -1.5 + rand() * 3.2),
-      phase: rand() * 10,
+      slot,
+      // Scattered layout: spread across the screen, mostly behind the chains' planes.
+      scatter: new THREE.Vector3(rand() * 2 - 1, rand() * 1.7 - 1, -2.6 + rand() * 3.4),
+      spin: new THREE.Vector3(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize().multiplyScalar(0.12 + rand() * 0.16),
+      q: new THREE.Quaternion().setFromEuler(new THREE.Euler(rand() * 6, rand() * 6, rand() * 6)),
+      pos: new THREE.Vector3(), vel: new THREE.Vector3(), k: 10 + rand() * 6, ready: false,
     };
-    m.rotation.copy(m.userData.rot0);
-    ring.add(m);
+    root.add(m);
     cubes.push(m);
   }
 
   /* ---------------- Chains ---------------- */
-  const linkGeo = new THREE.TorusGeometry(0.13, 0.038, 10, 26);
-  linkGeo.scale(1.6, 1, 1);
-  const chainMatA = new THREE.MeshPhysicalMaterial({ color: C.chrome, metalness: 1, roughness: 0.16, clearcoat: 1, envMapIntensity: 1.3, emissive: C.elixir, emissiveIntensity: 0 });
-  const chainMatB = new THREE.MeshPhysicalMaterial({ color: new THREE.Color('#2b2c30'), metalness: 1, roughness: 0.2, clearcoat: 1, envMapIntensity: 1.1, emissive: C.elixir, emissiveIntensity: 0 });
-
-  const B_LIGHT = new THREE.Color('#2b2c30'), B_DARK = new THREE.Color('#1a3d44');
-  const knot = (p, q, R, r) => (t) => {
-    const ct = Math.cos(q * t);
-    return new THREE.Vector3((R + r * ct) * Math.cos(p * t), r * Math.sin(q * t), (R + r * ct) * Math.sin(p * t));
-  };
-  const arcLength = (fn, a, b, n = 800) => {
-    let L = 0; let prev = fn(a);
-    for (let i = 1; i <= n; i++) { const p = fn(a + (b - a) * (i / n)); L += p.distanceTo(prev); prev = p; }
-    return L;
-  };
-  // Re-parameterise a curve by arc length so links are evenly spaced.
-  const arcTable = (fn, a, b, n = 1200) => {
-    const ts = [a]; const ls = [0]; let prev = fn(a); let L = 0;
-    for (let i = 1; i <= n; i++) { const t = a + (b - a) * (i / n); const p = fn(t); L += p.distanceTo(prev); prev = p; ts.push(t); ls.push(L); }
-    return (u) => { // u in [0,1] -> t
-      const target = u * L; let lo = 0, hi = ls.length - 1;
+  const linkGeo = new THREE.TubeGeometry(new StadiumCurve(), mobile ? 64 : 96, LINK.tube, mobile ? 10 : 14, true);
+  const chainMats = [
+    new THREE.MeshPhysicalMaterial({ color: C.chrome, metalness: 1, roughness: 0.09, roughnessMap: micro, envMapIntensity: 1.2 }),
+    new THREE.MeshPhysicalMaterial({ color: C.gunmetal, metalness: 1, roughness: 0.2, roughnessMap: micro, envMapIntensity: 1.1 }),
+  ];
+  // Wrapped path: a gentle wave that always stays exactly on the chain's sphere.
+  const shellPath = (radius, wave, waves, phase) => (t, out) =>
+    out.set(Math.cos(t), wave * Math.sin(waves * t + phase), Math.sin(t)).normalize().multiplyScalar(radius);
+  const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
+  const closedArcTable = (fn, n = 1600) => {
+    const ts = [0], ls = [0]; let L = 0; fn(0, tmpA);
+    for (let i = 1; i <= n; i++) { const t = (i / n) * Math.PI * 2; fn(t, tmpB); L += tmpB.distanceTo(tmpA); tmpA.copy(tmpB); ts.push(t); ls.push(L); }
+    return { L, at(u) {
+      const target = (((u % 1) + 1) % 1) * L; let lo = 0, hi = ls.length - 1;
       while (lo < hi - 1) { const mid = (lo + hi) >> 1; if (ls[mid] < target) lo = mid; else hi = mid; }
-      const f = (target - ls[lo]) / Math.max(1e-6, ls[hi] - ls[lo]);
-      return ts[lo] + (ts[hi] - ts[lo]) * f;
-    };
+      return ts[lo] + (ts[hi] - ts[lo]) * ((target - ls[lo]) / Math.max(1e-6, ls[hi] - ls[lo]));
+    } };
   };
-
-  const PITCH = 0.33;
-  const makeChain = (mat, knotFn, tilt, sweepCfg) => {
-    const L = arcLength(knotFn, 0, Math.PI * 2);
-    const N = Math.round(L / PITCH);
-    const mesh = new THREE.InstancedMesh(linkGeo, mat, N);
+  const makeChain = (i, radius, wave, waves, phase, tilt, sweep) => {
+    const fn = shellPath(radius, wave, waves, phase);
+    const table = closedArcTable(fn);
+    const N = Math.round(table.L / LINK.pitch);
+    const mesh = new THREE.InstancedMesh(linkGeo, chainMats[i], N);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.castShadow = mesh.receiveShadow = true;
     mesh.frustumCulled = false;
     root.add(mesh);
-    return { mesh, N, knotFn, uToT: arcTable(knotFn, 0, Math.PI * 2), tilt, sweep: sweepCfg, L };
+    return {
+      mesh, N, fn, table, tilt: new THREE.Quaternion().setFromEuler(tilt), sweep,
+      spin: new THREE.Quaternion(), angle: 0, rate: i ? -0.05 : 0.07,
+      pts: Array.from({ length: N }, () => new THREE.Vector3()),
+      nrm: Array.from({ length: N }, () => new THREE.Vector3()),
+    };
   };
-  // A loop around the core with a gentle vertical wave (a "saddle" ring).
-  const ringPath = (R, r, waves, stretch = 1) => (t) => new THREE.Vector3(R * stretch * Math.cos(t), r * Math.sin(waves * t), R * Math.sin(t));
   const chains = [
-    makeChain(chainMatA, ringPath(2.05, 0.38, 3, 1.08), new THREE.Euler(0.5, 0, 0.32), { amp: 0.95, freq: 1.15, y: 0.2, z: 0.6, phase: 0, speed: 0.55 }),
-    makeChain(chainMatB, ringPath(1.75, 0.3, 2, 1.0), new THREE.Euler(-0.95, 0.5, -0.5), { amp: 0.75, freq: 0.9, y: -0.55, z: -0.4, phase: 2.1, speed: 0.42 }),
+    makeChain(0, R.chainA, 0.22, 3, 0.0, new THREE.Euler(1.05, 0.1, 0.5), { y: 0.18, amp: 0.55, len: 1.1, freq: 1.0, speed: 0.22, z: 1 }),
+    makeChain(1, R.chainB, 0.16, 2, 1.3, new THREE.Euler(-0.6, 0.4, -0.35), { y: -0.5, amp: 0.45, len: 1.0, freq: 0.8, speed: 0.17, z: -1 }),
   ];
-
-  /* ---------------- Debris ---------------- */
-  const DEB = mobile ? 16 : 28;
-  const debGeo = new THREE.TetrahedronGeometry(0.07, 0);
-  const debMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0.6, roughness: 0.3, flatShading: true });
-  const debris = new THREE.InstancedMesh(debGeo, debMat, DEB);
-  debris.frustumCulled = false;
-  const debData = [];
-  const palette = [C.ink, C.molten, C.chrome, C.ink, C.gold, C.paper];
-  for (let i = 0; i < DEB; i++) {
-    debData.push({
-      p: new THREE.Vector3((rand() * 2 - 1) * 1.15, (rand() * 2 - 1) * 1.1, -3 + rand() * 4.5),
-      s: 0.5 + rand() * 1.3,
-      r: new THREE.Vector3(rand() * 6, rand() * 6, rand() * 6),
-      v: 0.2 + rand() * 0.6,
-      ph: rand() * 10,
-    });
-    debris.setColorAt(i, palette[i % palette.length]);
-  }
-  root.add(debris);
 
   /* ---------------- State ---------------- */
   const target = { x: 0.1, y: -0.08, s: 0.82, explode: 0, chain: 0, dark: 0, sweepY: 0 };
-  const cur = { ...target, intro: reduced ? 1 : 0 };
-  const pointer = { x: 0, y: 0, tx: 0, ty: 0 };
+  const sp = {
+    x: new Spring(target.x, 14), y: new Spring(target.y, 14), s: new Spring(target.s, 14),
+    explode: new Spring(0, 9), chain: new Spring(0, 8), dark: new Spring(0, 10), sweepY: new Spring(0, 9),
+    px: new Spring(0, 10), py: new Spring(0, 10), spin: new Spring(0.1, 3),
+  };
+  const cur = { intro: reduced ? 1 : 0 };
+  const pointer = { x: 0, y: 0 };
   let velocity = 0;
   let halfW = 1, halfH = 1, fit = 1;
 
@@ -250,211 +361,242 @@ export function createScene(canvas, { reduced = false, mobile = false } = {}) {
     camera.updateProjectionMatrix();
     halfH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.position.z;
     halfW = halfH * camera.aspect;
-    fit = Math.min(halfW, halfH) / 2.9;
+    fit = Math.min(halfW, halfH) / R.outer;
+    const sc = key.shadow.camera;
+    sc.left = -halfW * 1.4; sc.right = halfW * 1.4; sc.top = halfH * 1.5; sc.bottom = -halfH * 1.5;
+    sc.near = 1; sc.far = 40;
+    sc.updateProjectionMatrix();
   };
   resize();
 
-  // Reusable temporaries
-  const m4 = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
+  // Scratch objects (no allocations inside the frame loop)
   const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3();
-  const tA = new THREE.Vector3(), tB = new THREE.Vector3(), nrm = new THREE.Vector3(), bin = new THREE.Vector3();
-  const one = new THREE.Vector3(1, 1, 1);
-  const sc = new THREE.Vector3();
-  const basis = new THREE.Matrix4();
-  const spinQ = new THREE.Quaternion();
-  const tiltQ = new THREE.Quaternion();
-  const coreQ = new THREE.Quaternion();
-  const e = new THREE.Euler();
-  const worldUp = new THREE.Vector3(0, 1, 0);
-  const altUp = new THREE.Vector3(0, 0, 1);
+  const tan = new THREE.Vector3(), n1 = new THREE.Vector3(), n2 = new THREE.Vector3(), bin = new THREE.Vector3();
+  const q = new THREE.Quaternion(), qa = new THREE.Quaternion();
+  const m4 = new THREE.Matrix4(), basis = new THREE.Matrix4(), scl = new THREE.Vector3();
+  const coreC = new THREE.Vector3();
+  const worldY = new THREE.Vector3(0, 1, 0), worldZ = new THREE.Vector3(0, 0, 1);
+  const euler = new THREE.Euler();
+  const ringQ = new THREE.Quaternion();
 
   let time = 0;
-  let coreRot = 0;
+  let coreAngle = 0;
+  let ringAngle = 0;
   const clock = new THREE.Clock();
 
-  const sweepPoint = (cfg, u, t, out) => {
-    const span = Math.max(halfW, 4.2) * 2.6;
-    const x = (u - 0.5) * span;
-    out.set(
-      x,
-      (cfg.y + cur.sweepY) * halfH + cfg.amp * Math.sin(u * Math.PI * 2 * cfg.freq + t * cfg.speed + cfg.phase),
-      cfg.z + 0.9 * Math.cos(u * Math.PI * 2 * 0.8 + t * cfg.speed * 0.7 + cfg.phase)
-    );
-    return out;
-  };
+  const ease = (t) => t * t * (3 - 2 * t);
+  const introScale = () => { const t = Math.min(1, cur.intro); return 1 - Math.pow(1 - t, 3); };
 
-  const frame = () => {
-    const dt = Math.min(clock.getDelta(), 1 / 20);
-    time += reduced ? dt * 0.25 : dt;
+  function stepState(dt) {
+    // Springs integrate in small steps so motion is identical at 30, 60 or 120 fps.
+    const steps = Math.max(1, Math.ceil(dt / (1 / 120)));
+    const h = dt / steps;
+    for (let i = 0; i < steps; i++) {
+      for (const k of ['x', 'y', 's', 'explode', 'chain', 'dark', 'sweepY']) sp[k].step(target[k], h);
+      sp.px.step(pointer.x, h); sp.py.step(pointer.y, h);
+      sp.spin.step(0.1 + Math.min(Math.abs(velocity) * 0.004, 0.5), h);
+    }
+  }
 
-    // Ease everything towards the current section's target.
-    const L = 3.2;
-    cur.x = damp(cur.x, target.x, L, dt);
-    cur.y = damp(cur.y, target.y, L, dt);
-    cur.s = damp(cur.s, target.s, L, dt);
-    cur.explode = damp(cur.explode, target.explode, 2.4, dt);
-    cur.chain = damp(cur.chain, target.chain, 2.2, dt);
-    cur.dark = damp(cur.dark, target.dark, 3, dt);
-    cur.sweepY = damp(cur.sweepY, target.sweepY, 2.2, dt);
-    velocity = damp(velocity, 0, 3, dt);
-    pointer.x = damp(pointer.x, pointer.tx, 4, dt);
-    pointer.y = damp(pointer.y, pointer.ty, 4, dt);
+  function frame() {
+    const dt = Math.min(clock.getDelta(), 1 / 15);
+    const motion = reduced ? 0.25 : 1;
+    time += dt * motion;
+    velocity *= Math.exp(-3 * dt);
+    stepState(dt);
 
-    const intro = cur.intro;
-    const introS = intro >= 1 ? 1 : Math.max(0, easeOutBack(intro));
+    const iS = introScale();
+    const cs = sp.s.x * fit * Math.max(iS, 0.0001);      // core-unit → world scale
+    const mix = ease(THREE.MathUtils.clamp(sp.chain.x, 0, 1));
+    const ex = ease(THREE.MathUtils.clamp(sp.explode.x, 0, 1));
+    const d = THREE.MathUtils.clamp(sp.dark.x, 0, 1);
 
-    // Root parallax
-    root.rotation.y = pointer.x * 0.22;
-    root.rotation.x = -pointer.y * 0.14;
+    // Camera-like parallax: the whole set turns a little with the pointer.
+    root.rotation.set(-sp.py.x * 0.1, sp.px.x * 0.16, 0);
 
-    // Core transform (positions are fractions of the visible half-size)
-    const cx = cur.x * halfW;
-    const cy = cur.y * halfH;
-    const cs = cur.s * fit * introS;
-    core.position.set(cx, cy + Math.sin(time * 0.8) * 0.06, 0);
-    core.scale.setScalar(Math.max(cs, 0.0001));
-    coreRot += dt * (0.18 + Math.min(Math.abs(velocity) * 0.02, 1.4)) * (reduced ? 0.3 : 1) + (1 - intro) * dt * 3;
-    core.rotation.set(0.25 + Math.sin(time * 0.3) * 0.1, coreRot, 0.12);
-    halo.rotation.z = time * 0.4;
+    // Core
+    coreC.set(sp.x.x * halfW, sp.y.x * halfH, 0);
+    coreAngle += dt * sp.spin.x * motion + (1 - Math.min(cur.intro, 1)) * dt * 1.2;
+    ringAngle += dt * 0.045 * motion;
+    core.position.copy(coreC);
+    core.scale.setScalar(cs);
+    core.rotation.set(0.28, coreAngle, 0.1);
 
-    // Dark-mode colour shifts
-    const d = cur.dark;
-    chainMatA.emissiveIntensity = d * 0.55;
-    chainMatB.emissiveIntensity = d * 0.85;
-    chainMatB.color.lerpColors(B_LIGHT, B_DARK, d);
-    mats.paper.color.lerpColors(C.paper, C.elixir, d * 0.75);
-    mats.paper.emissiveIntensity = d * 0.35;
-    glow.intensity = d * 60;
-    rim.intensity = 30 + d * 20;
-    renderer.toneMappingExposure = 1.05 + d * 0.15;
+    // Lighting mood: dark sections get a cool rim and a warm low fill, studio dims a touch.
+    scene.environmentIntensity = 1 - d * 0.35;
+    rim.intensity = d * 3.2;
+    warm.intensity = d * 14;
+    key.intensity = 1.4 - d * 0.5;
 
-    // Cubes: ring around the core <-> scattered across the screen
-    const ex = smooth(Math.min(1, Math.max(0, cur.explode)));
-    const ringRot = time * 0.16 + coreRot * 0.2;
-    tiltQ.setFromEuler(e.set(1.12, 0, 0.32));
-    cubes.forEach((m, i) => {
-      const u = m.userData;
-      const a = u.a + ringRot;
-      const rr = u.r * (0.2 + 0.8 * introS);
-      v1.set(Math.cos(a) * rr, u.y + Math.sin(time * 0.9 + u.phase) * 0.08, Math.sin(a) * rr).applyQuaternion(tiltQ);
-      v1.multiplyScalar(cs).add(core.position);
-      v2.set(
-        u.scatter.x * halfW * 0.92 + Math.sin(time * 0.35 + u.phase) * 0.25,
-        u.scatter.y * halfH * 0.85 + Math.cos(time * 0.3 + u.phase) * 0.25,
-        u.scatter.z
-      );
-      m.position.lerpVectors(v1, v2, ex);
-      const scale = u.s * (cs * (1 - ex) + fit * 0.85 * ex);
-      m.scale.setScalar(Math.max(scale, 0.0001));
-      m.rotation.set(
-        u.rot0.x + time * u.spin.x * (reduced ? 0.2 : 1),
-        u.rot0.y + time * u.spin.y * (reduced ? 0.2 : 1),
-        u.rot0.z + time * u.spin.z * (reduced ? 0.2 : 1)
-      );
-    });
-
-    // Chains
-    const mix = smooth(Math.min(1, Math.max(0, cur.chain)));
-    coreQ.setFromEuler(core.rotation);
+    /* ---- Chains ----
+       The inner chain always stays wrapped round the core. The outer chain can unwrap
+       and sweep across the screen in front of everything; while it travels it is kept
+       outside the inner chain's shell, so the two can never cross. */
+    const sweepScale = fit * 1.3;
     chains.forEach((ch, ci) => {
-      tiltQ.setFromEuler(ch.tilt);
-      spinQ.setFromAxisAngle(worldUp, coreRot * (ci ? -0.6 : 0.8));
-      const flow = (time * (ci ? 0.012 : 0.016)) % 1;
+      const m = ci ? mix : 0;
+      ch.m = m;
+      ch.scale = cs * (1 - m) + sweepScale * m;
+      ch.angle += dt * ch.rate * motion;
+      ch.spin.setFromAxisAngle(ci ? v3.set(0.3, 1, 0.2).normalize() : worldY, ch.angle);
+      const sw = ch.sweep;
+      const length = ch.N * LINK.pitch * sweepScale;              // exact chain length when straight
+      const zPlane = R.outer * cs + 0.45 * sweepScale;             // in front of the whole core
+      // closest the link centres may come to the core: outside chain A plus a link's half-length
+      const minR = (R.chainA + 0.16) * cs + LINK.bound * ch.scale;
       for (let i = 0; i < ch.N; i++) {
         const u = i / ch.N;
-        // wrap position (local knot -> world)
-        const uw = (u + flow) % 1;
-        const t0 = ch.uToT(uw);
-        const t1 = ch.uToT((uw + 0.002) % 1);
-        v1.copy(ch.knotFn(t0)).applyQuaternion(tiltQ).applyQuaternion(spinQ);
-        tA.copy(ch.knotFn(t1)).applyQuaternion(tiltQ).applyQuaternion(spinQ).sub(v1);
-        v1.multiplyScalar(cs * (0.35 + 0.65 * introS)).add(core.position);
-        // sweep position
-        sweepPoint(ch.sweep, u, time, v2);
-        sweepPoint(ch.sweep, u + 0.002, time, v3);
-        tB.subVectors(v3, v2);
-        v1.lerp(v2, mix);
-        tA.normalize().lerp(tB.normalize(), mix).normalize();
-        // Orthonormal basis with the link's long axis along the tangent
-        const ref = Math.abs(tA.dot(worldUp)) > 0.9 ? altUp : worldUp;
-        nrm.copy(ref).addScaledVector(tA, -tA.dot(ref)).normalize();
-        if (i % 2) nrm.crossVectors(tA, nrm).normalize(); // alternate 90°
-        bin.crossVectors(tA, nrm);
-        basis.makeBasis(tA, nrm, bin);
+        ch.fn(ch.table.at(u), v1).applyQuaternion(ch.tilt).applyQuaternion(ch.spin);
+        n1.copy(v1).normalize();
+        v1.multiplyScalar(cs).add(coreC);
+        const p = ch.pts[i];
+        if (m <= 0) { p.copy(v1); ch.nrm[i].copy(n1); continue; }
+        const x = (u - 0.5) * length;
+        const phase = u * Math.PI * 2 * sw.freq * (length / 12) + time * sw.speed;
+        v2.set(x, (sw.y + sp.sweepY.x) * halfH + sw.amp * Math.sin(phase), zPlane + 0.12 * Math.sin(phase * 0.7));
+        n2.set(0, 0, 1);
+        p.lerpVectors(v1, v2, m);
+        ch.nrm[i].lerpVectors(n1, n2, m).normalize();
+        v3.subVectors(p, coreC);
+        const L = v3.length();
+        if (L < minR) p.copy(coreC).addScaledVector(v3.divideScalar(Math.max(L, 1e-5)), minR);
+      }
+    });
+    const A = chains[0], B = chains[1];
+    // Orient every link along its chain, alternating 90° so neighbours interlock.
+    chains.forEach((ch) => {
+      for (let i = 0; i < ch.N; i++) {
+        const prev = ch.pts[(i - 1 + ch.N) % ch.N], next = ch.pts[(i + 1) % ch.N];
+        const closed = ch.m < 0.5;
+        if (closed || (i > 0 && i < ch.N - 1)) tan.subVectors(next, prev);
+        else if (i === 0) tan.subVectors(ch.pts[1], ch.pts[0]);
+        else tan.subVectors(ch.pts[i], ch.pts[i - 1]);
+        tan.normalize();
+        n1.copy(ch.nrm[i]).addScaledVector(tan, -ch.nrm[i].dot(tan));
+        if (n1.lengthSq() < 1e-6) n1.copy(Math.abs(tan.y) > 0.9 ? worldZ : worldY).addScaledVector(tan, -tan.dot(Math.abs(tan.y) > 0.9 ? worldZ : worldY));
+        n1.normalize();
+        if (i % 2) n1.crossVectors(tan, n1).normalize();
+        bin.crossVectors(n1, tan);
+        basis.makeBasis(tan, bin, n1);
         q.setFromRotationMatrix(basis);
-        const ls = (cs * (1 - mix) + fit * 0.95 * mix) * Math.min(1, intro * 1.5);
-        sc.setScalar(Math.max(ls, 0.0001));
-        m4.compose(v1, q, sc);
+        scl.setScalar(Math.max(ch.scale * iS, 0.0001));
+        m4.compose(ch.pts[i], q, scl);
         ch.mesh.setMatrixAt(i, m4);
       }
       ch.mesh.instanceMatrix.needsUpdate = true;
     });
 
-    // Debris
-    for (let i = 0; i < DEB; i++) {
-      const dd = debData[i];
-      v1.set(
-        dd.p.x * halfW + Math.sin(time * dd.v + dd.ph) * 0.3,
-        dd.p.y * halfH + ((time * dd.v * 0.12 + dd.ph) % 2 - 1) * 0.4,
-        dd.p.z
-      );
-      e.set(dd.r.x + time * dd.v, dd.r.y + time * dd.v * 0.7, dd.r.z);
-      q.setFromEuler(e);
-      sc.setScalar(dd.s * fit * (0.6 + 0.4 * introS) * Math.min(1, intro * 2));
-      m4.compose(v1, q, sc);
-      debris.setMatrixAt(i, m4);
+    /* ---- Keycaps: ring around the core ↔ scattered, springs + collision pass ---- */
+    ringQ.setFromAxisAngle(worldY, ringAngle).premultiply(ringTilt);
+    const capScaleRing = cs, capScaleScatter = fit * 0.95;
+    cubes.forEach((m) => {
+      const u = m.userData;
+      v1.copy(u.slot).applyQuaternion(ringQ).multiplyScalar(cs).add(coreC);
+      v2.set(u.scatter.x * halfW * 0.92, u.scatter.y * halfH * 0.85, u.scatter.z);
+      v1.lerp(v2, ex);
+      if (!u.ready) { u.pos.copy(v1); u.ready = true; }
+      // spring toward the target (each cap has its own stiffness → natural stagger)
+      const k = u.k, c = 2 * Math.sqrt(k);
+      v3.subVectors(v1, u.pos).multiplyScalar(k).addScaledVector(u.vel, -c);
+      u.vel.addScaledVector(v3, dt);
+      u.pos.addScaledVector(u.vel, dt);
+      u.radius = CUBE.bound * u.s * (capScaleRing * (1 - ex) + capScaleScatter * ex) * iS;
+      // slow zero-gravity tumble
+      qa.setFromAxisAngle(v3.copy(u.spin).normalize(), u.spin.length() * dt * motion);
+      u.q.premultiply(qa);
+    });
+    // Collision pass: caps vs core, chains and each other (positions + velocities).
+    const coreR = (R.spikes + 0.14) * cs;
+    for (let iter = 0; iter < 6; iter++) {
+      for (let a = 0; a < cubes.length; a++) {
+        const ua = cubes[a].userData;
+        const push = (from, minDist) => {
+          v3.subVectors(ua.pos, from);
+          const L = v3.length();
+          if (L < minDist) {
+            v3.divideScalar(Math.max(L, 1e-5));
+            ua.pos.addScaledVector(v3, minDist - L);
+            const vn = ua.vel.dot(v3);
+            if (vn < 0) ua.vel.addScaledVector(v3, -vn);
+          }
+        };
+        for (const ch of chains) { const lr = LINK.bound * ch.scale * iS + ua.radius + 0.01; for (let i = 0; i < ch.N; i++) push(ch.pts[i], lr); }
+        for (let b = a + 1; b < cubes.length; b++) {
+          const ub = cubes[b].userData;
+          v3.subVectors(ua.pos, ub.pos);
+          const L = v3.length(); const min = ua.radius + ub.radius + 0.01;
+          if (L < min) {
+            v3.divideScalar(Math.max(L, 1e-5)).multiplyScalar((min - L) / 2);
+            ua.pos.add(v3); ub.pos.sub(v3);
+          }
+        }
+        push(coreC, coreR + ua.radius);
+      }
     }
-    debris.instanceMatrix.needsUpdate = true;
+    cubes.forEach((m) => {
+      const u = m.userData;
+      m.position.copy(u.pos);
+      m.quaternion.copy(u.q);
+      m.scale.setScalar(Math.max(u.s * (capScaleRing * (1 - ex) + capScaleScatter * ex) * iS, 0.0001));
+    });
 
+    if (debug) {
+      let cc = Infinity, cl = Infinity, ck = Infinity, ab = Infinity, lk = Infinity;
+      for (let a = 0; a < cubes.length; a++) {
+        const ua = cubes[a].userData;
+        ck = Math.min(ck, ua.pos.distanceTo(coreC) - ua.radius - (R.spikes) * cs);
+        for (const ch of chains) for (let i = 0; i < ch.N; i++) cl = Math.min(cl, ua.pos.distanceTo(ch.pts[i]) - ua.radius - LINK.bound * ch.scale * iS);
+        for (let b = a + 1; b < cubes.length; b++) { const ub = cubes[b].userData; cc = Math.min(cc, ua.pos.distanceTo(ub.pos) - ua.radius - ub.radius); }
+      }
+      for (let i = 0; i < B.N; i++) ab = Math.min(ab, (B.pts[i].distanceTo(coreC) - LINK.bound * B.scale) / Math.max(cs, 1e-6)); // must stay > 1.78 (outside chain A)
+      for (const ch of chains) for (let i = 0; i < ch.N; i++) lk = Math.min(lk, (ch.pts[i].distanceTo(coreC) - LINK.bound * ch.scale) / Math.max(cs, 1e-6));
+      const st = (window.__kemia3d = window.__kemia3d || { cubeCube: Infinity, cubeLink: Infinity, cubeCore: Infinity, chainChain: Infinity, linkCore: Infinity, frames: 0 });
+      if (cur.intro >= 1) {
+        st.cubeCube = Math.min(st.cubeCube, cc); st.cubeLink = Math.min(st.cubeLink, cl); st.cubeCore = Math.min(st.cubeCore, ck);
+        st.chainChain = Math.min(st.chainChain, ab); st.linkCore = Math.min(st.linkCore, lk); st.frames++;
+      }
+    }
     renderer.render(scene, camera);
-  };
+  }
 
-  // Render loop. It stops while the tab is hidden, can be capped (e.g. 30fps behind text on
-  // phones), drops resolution on slow devices, and with reduced motion it only renders
-  // while something is actually changing.
-  let raf = 0;
+  /* ---------------- Render loop ---------------- */
+  // Stops while the tab is hidden; with reduced motion it only renders while something
+  // changes; on slow devices it steps the resolution down instead of dropping frames.
   let running = !document.hidden;
-  let sectionCap = 0; // set per section from main.js
-  let autoCap = 0;    // set here if the device turns out to be slow
   let lastFrame = 0;
-  let wake = 1; // seconds of rendering left after a state change (reduced motion)
-  const samples = [];
-  let tuned = false;
+  let wake = 1;
+  let samples = [];
+  let fpsCap = 0;
   const loop = (now) => {
-    raf = requestAnimationFrame(loop);
+    requestAnimationFrame(loop);
     if (!running) return;
-    const cap = autoCap || sectionCap;
-    if (cap && now - lastFrame < 1000 / cap - 2) return;
-    if (idleWhenStill && cur.intro >= 1 && wake <= 0) return;
-    if (lastFrame && !tuned && !cap && cur.intro >= 1) {
+    if (fpsCap && now - lastFrame < 1000 / fpsCap - 2) return;
+    if (reduced && cur.intro >= 1 && wake <= 0) return;
+    if (lastFrame && cur.intro >= 1 && dprIndex < dprSteps.length - 1) {
       samples.push(now - lastFrame);
       if (samples.length >= 90) {
-        tuned = true;
         samples.sort((a, b) => a - b);
-        const median = samples[45];
-        if (median > 22) { // under ~45fps: lighten the load
-          renderer.setPixelRatio(1);
-          resize();
-          if (median > 30) autoCap = 30;
-        }
+        if (samples[45] > 21) { dprIndex++; applyDpr(); resize(); } // below ~48fps: lighten
+        samples = [];
       }
     }
     lastFrame = now;
     wake -= 1 / 60;
     frame();
   };
-  raf = requestAnimationFrame(loop);
+  requestAnimationFrame(loop);
   document.addEventListener('visibilitychange', () => { running = !document.hidden; clock.getDelta(); });
 
   return {
-    setState(s) { Object.assign(target, s); wake = softwareGL ? 0.8 : 2.5; },
-    setFpsCap(fps) { sectionCap = fps; },
-    setPointer(x, y) { pointer.tx = x; pointer.ty = y; if (idleWhenStill) wake = Math.max(wake, 0.3); },
+    setState(s) { Object.assign(target, s); wake = 3; },
+    setFpsCap(fps) { fpsCap = fps; },
+    setPointer(x, y) { pointer.x = x; pointer.y = y; if (reduced) wake = Math.max(wake, 1); },
     setVelocity(v) { velocity = Math.max(-80, Math.min(80, v)); },
     get intro() { return cur.intro; },
     set intro(v) { cur.intro = v; },
-    snap() { Object.assign(cur, target); },
+    snap() {
+      for (const k of ['x', 'y', 's', 'explode', 'chain', 'dark', 'sweepY']) { sp[k].x = target[k]; sp[k].v = 0; }
+    },
     resize,
     renderer,
   };

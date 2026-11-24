@@ -60,7 +60,7 @@ $$('a[href^="#"]').forEach((a) => a.addEventListener('click', (e) => {
    ========================================================== */
 let scene = null;
 const SCENES = {
-  hero:      { x: 0.2, y: -0.1, s: 0.78, explode: 0, chain: 0, dark: 0, sweepY: 0 },
+  hero:      { x: 0.22, y: -0.1, s: 0.8, explode: 0, chain: 0, dark: 0, sweepY: 0 },
   manifesto: { x: 0.6, y: -0.45, s: 0.5, explode: 0.1, chain: 1, dark: 0, sweepY: -0.58 },
   services:  { x: 0.05, y: -0.3, s: 1.0, explode: 0.9, chain: 1, dark: 1, sweepY: -0.45 },
   demo:      { x: 0.1, y: -0.32, s: 0.55, explode: 0.15, chain: 0, dark: 1, sweepY: 0 },
@@ -96,8 +96,6 @@ function setScene(name) {
   document.querySelector('meta[name="theme-color"]').setAttribute('content', s.dark > 0.5 ? '#0A0A0B' : '#EEECE6');
   if (scene) {
     scene.setState(s);
-    // Phones: the 3D sits faded behind text in most sections, so 30fps is plenty there.
-    scene.setFpsCap(isMobile() && !['hero', 'services', 'manifesto', 'footer'].includes(name) ? 30 : 0);
   }
 }
 
@@ -121,7 +119,7 @@ async function initScene() {
   }
   try {
     const { createScene } = await import('./scene.js');
-    scene = createScene($('#gl'), { reduced, mobile: isMobile() });
+    scene = createScene($('#gl'), { reduced, mobile: isMobile(), debug: new URLSearchParams(location.search).has('debug3d') });
     setScene(currentScene);
     scene.snap();
     scene.intro = 0;

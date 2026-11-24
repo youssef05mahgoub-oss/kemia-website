@@ -88,7 +88,7 @@ h1, h2, h3, p { margin: 0; }
 main { position: relative; overflow-x: clip; }
 #gl { transition: opacity .8s var(--ease); }
 @media (max-width: 900px) {
-  body:not([data-scene='hero']):not([data-scene='services']):not([data-scene='footer']):not([data-scene='manifesto']) #gl { opacity: .5; }
+  body:not([data-scene='hero']):not([data-scene='services']):not([data-scene='footer']):not([data-scene='manifesto']) #gl { opacity: .85; }
 }
 .footer { position: relative; z-index: 2; }
 
