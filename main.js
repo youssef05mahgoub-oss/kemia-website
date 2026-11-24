@@ -73,7 +73,7 @@ const SCENES = {
 // On phones the text fills the width, so the object moves into the gaps.
 const MOBILE = {
   hero:      { x: 0.05, y: -0.5, s: 0.9 },
-  manifesto: { x: 0.3, y: -0.6, s: 0.8, sweepY: -0.6 },
+  manifesto: { x: 0.3, y: -0.6, s: 0.8, sweepY: -0.32 },
   services:  { x: 0, y: -0.2, s: 1.2, sweepY: -0.4 },
   demo:      { x: 0.8, y: -0.72, s: 0.6 },
   work:      { x: 0.8, y: -0.72, s: 0.6 },
