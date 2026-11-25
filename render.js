@@ -56,10 +56,16 @@ export function headHTML(lang) {
         hasOfferCatalog: {
           '@type': 'OfferCatalog',
           name: t['svc.label'].replace(/[()]/g, '').trim(),
-          itemListElement: SERVICES.map((s) => ({
-            '@type': 'Offer',
-            itemOffered: { '@type': 'Service', name: t[`svc.${s.key}.name`], description: t[`svc.${s.key}.desc`] },
-          })),
+          itemListElement: [
+            {
+              '@type': 'Offer', price: '0', priceCurrency: 'EGP',
+              itemOffered: { '@type': 'Service', name: t['offer.cta'], description: t['offer.text'] },
+            },
+            ...SERVICES.map((s) => ({
+              '@type': 'Offer',
+              itemOffered: { '@type': 'Service', name: t[`svc.${s.key}.name`], description: t[`svc.${s.key}.desc`] },
+            })),
+          ],
         },
       },
       { '@type': 'WebSite', '@id': `${SITE}#website`, url: SITE, name: 'KEMIA', inLanguage: ['en', 'ar'], publisher: { '@id': `${SITE}#organization` } },

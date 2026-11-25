@@ -177,7 +177,7 @@ function setupScroll() {
   });
 
   // Generic reveals
-  ScrollTrigger.batch('.h2, .card, .step, .why__item, .faq details, .demo__points li, .stat, .form, .contact__text, .demo__text, .label', {
+  ScrollTrigger.batch('.h2, .offer, .card, .step, .why__item, .faq details, .demo__points li, .stat, .form, .contact__text, .demo__text, .label', {
     start: 'top 88%',
     onEnter: (els) => gsap.fromTo(els, { y: 50, opacity: 0 }, { y: 0, opacity: 1, duration: 1.1, ease: 'expo.out', stagger: 0.08, overwrite: true }),
   });
