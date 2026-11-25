@@ -305,14 +305,25 @@ window.addEventListener('resize', () => { fitWordmark(); });
 /* ==========================================================
    WhatsApp demo
    ========================================================== */
-const CHAT = [
-  { me: true, t: 'السلام عليكم، عايز أحجز كشف أسنان', at: '17:02' },
-  { me: false, t: 'وعليكم السلام 👋 أهلاً بيك! تحب الكشف يوم إيه؟', at: '17:02' },
-  { me: true, t: 'بكرة بعد الضهر لو ينفع', at: '17:03' },
-  { me: false, t: 'بكرة متاح ٤:٠٠ أو ٥:٣٠ أو ٧:٠٠ مساءً. أنهي ميعاد يناسبك؟', at: '17:03' },
-  { me: true, t: '٥:٣٠ تمام', at: '17:03' },
-  { me: false, t: 'تمام ✅ حجزتلك كشف بكرة الساعة ٥:٣٠ مساءً، وهبعتلك تذكير قبلها بساعة.', at: '17:03' },
-];
+const CHATS = {
+  en: [
+    { me: true, t: 'Hi, I’d like to book a dental check-up', at: '17:02' },
+    { me: false, t: 'Hi there 👋 Happy to help! Which day works for you?', at: '17:02' },
+    { me: true, t: 'Tomorrow afternoon if possible', at: '17:03' },
+    { me: false, t: 'Tomorrow we have 4:00, 5:30 or 7:00 PM. Which one suits you?', at: '17:03' },
+    { me: true, t: '5:30 works', at: '17:03' },
+    { me: false, t: 'Done ✅ You’re booked for tomorrow at 5:30 PM. I’ll send you a reminder an hour before.', at: '17:03' },
+  ],
+  ar: [
+    { me: true, t: 'السلام عليكم، عايز أحجز كشف أسنان', at: '17:02' },
+    { me: false, t: 'وعليكم السلام 👋 أهلًا بيك! تحب الكشف يوم إيه؟', at: '17:02' },
+    { me: true, t: 'بكرة بعد الضهر لو ينفع', at: '17:03' },
+    { me: false, t: 'بكرة متاح 4:00 أو 5:30 أو 7:00 بالليل. أنهي ميعاد يناسبك؟', at: '17:03' },
+    { me: true, t: '5:30 تمام', at: '17:03' },
+    { me: false, t: 'تمام ✅ حجزتلك كشف بكرة الساعة 5:30، وهبعتلك تذكير قبلها بساعة.', at: '17:03' },
+  ],
+};
+const CHAT = CHATS[lang] || CHATS.en;
 let chatTl = null;
 function playChat() {
   if (chatTl && chatTl.isActive()) return;

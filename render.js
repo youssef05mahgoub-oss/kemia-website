@@ -49,7 +49,7 @@ export function headHTML(lang) {
         logo: `${SITE}kemia-logo.svg`,
         image: `${SITE}og.jpg`,
         description: t['meta.desc'],
-        slogan: lang === 'ar' ? 'بنحوّل الشغل المتكرر لدهب.' : 'We turn busywork into gold.',
+        slogan: lang === 'ar' ? 'بنحوّل الروتين لدهب.' : 'We turn busywork into gold.',
         address: { '@type': 'PostalAddress', addressLocality: 'Cairo', addressCountry: 'EG' },
         areaServed: { '@type': 'Country', name: 'Egypt' },
         knowsLanguage: ['ar', 'en'],

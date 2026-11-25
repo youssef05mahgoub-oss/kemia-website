@@ -487,7 +487,7 @@ body[data-theme='dark'] .demo__points i { color: var(--elixir); }
 [dir='rtl'] .stat { padding: 28px 0 0 22px; }
 .stat + .stat { border-inline-start: 1px solid var(--line); padding-inline-start: 22px; }
 .stat b { display: block; font: 900 clamp(46px, 5.4vw, 88px)/.9 'Archivo Variable', var(--f-display); font-stretch: 118%; letter-spacing: -.05em; }
-[dir='rtl'] .stat b { font-family: var(--f-display); letter-spacing: 0; }
+[dir='rtl'] .stat b { font-family: var(--f-display); letter-spacing: 0; line-height: 1.2; padding-bottom: .22em; }
 .stat p { margin-top: 12px; color: var(--muted); font-size: 14px; max-width: 220px; }
 
 /* Process */
