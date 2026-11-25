@@ -206,15 +206,28 @@ function setupScroll() {
     },
   });
 
-  // Generic reveals
-  ScrollTrigger.batch('.h2, .offer, .card, .step, .why__item, .faq details, .demo__points li, .stat, .form, .contact__text, .demo__text, .label', {
-    start: 'top 88%',
-    onEnter: (els) => gsap.fromTo(els, { y: 36, opacity: 0 }, { y: 0, opacity: 1, duration: 1.2, ease: 'power3.out', stagger: 0.07, overwrite: true, force3D: true }),
-  });
-  ScrollTrigger.batch('.el', {
-    start: 'top 90%',
-    onEnter: (els) => gsap.fromTo(els, { y: 56, opacity: 0 }, { y: 0, opacity: 1, duration: 1.25, ease: 'power3.out', stagger: 0.06, overwrite: true, force3D: true }),
-  });
+  // Reveals: each element is hidden *before* it reaches the screen and rises once when it
+  // scrolls into view. (Hiding it only when the animation starts made it show, vanish and
+  // rise again — the "plays twice" effect.)
+  const REVEAL = '.h2, .offer, .card, .step, .why__item, .faq details, .demo__points li, .stat, .form, .contact__text, .demo__text, .label';
+  if (!reduced) {
+    gsap.set(REVEAL, { y: 36, opacity: 0, force3D: true });
+    gsap.set('.el', { y: 56, opacity: 0, force3D: true });
+    ScrollTrigger.batch(REVEAL, {
+      start: 'top 94%', once: true,
+      onEnter: (els) => gsap.to(els, { y: 0, opacity: 1, duration: 1.1, ease: 'power3.out', stagger: 0.07, overwrite: true, clearProps: 'transform,translate,rotate,scale,opacity' }),
+    });
+    ScrollTrigger.batch('.el', {
+      start: 'top 96%', once: true,
+      onEnter: (els) => gsap.to(els, { y: 0, opacity: 1, duration: 1.15, ease: 'power3.out', stagger: 0.06, overwrite: true, clearProps: 'transform,translate,rotate,scale,opacity' }),
+    });
+    // Anything already scrolled past (a reload halfway down the page) is shown straight away.
+    const showPassed = () => [...$$(REVEAL), ...$$('.el')].forEach((el) => {
+      if (el.getBoundingClientRect().bottom < 0 && +getComputedStyle(el).opacity < 1) gsap.set(el, { clearProps: 'transform,translate,rotate,scale,opacity' });
+    });
+    ScrollTrigger.addEventListener('refresh', showPassed);
+    showPassed();
+  }
   gsap.fromTo('.contact__title > *', { yPercent: 100, opacity: 0 }, {
     yPercent: 0, opacity: 1, duration: 1.2, ease: 'expo.out', stagger: 0.12,
     scrollTrigger: { trigger: '.contact', start: 'top 70%' },
