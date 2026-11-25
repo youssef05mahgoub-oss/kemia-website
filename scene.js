@@ -472,16 +472,26 @@ export function createScene(canvas, { reduced = false, mobile = false, debug = f
        Wrapped: each chain spins, slowly precesses and its links flow round the loop, all
        inside its own shell. Unwrapped: both lie across the screen as travelling waves,
        A in a plane behind the core and B in a plane in front of it. */
-    const sweepScale = fit * 1.3;
+    const baseSweep = fit * 1.3;
+    const camZ = camera.position.z;
     chains.forEach((ch, ci) => {
       const m = ci ? mixB : mixA;
       ch.m = m;
+      const sw = ch.sweep;
+      // Lying flat, each chain must reach past both screen edges at its own depth (the one
+      // behind the core sits further away, so it needs to be longer). If the links at the
+      // normal size would fall short, they grow until the chain spans the whole width.
+      let sweepScale = baseSweep;
+      for (let it = 0; it < 2; it++) {
+        const z = sw.z * (R.outer * cs + 0.5 * sweepScale) - 0.3 * fit;   // furthest the wave sways back
+        const needed = 2 * halfW * ((camZ - z) / camZ) * 1.18;
+        sweepScale = Math.max(baseSweep, needed / (ch.N * LINK.pitch));
+      }
       ch.scale = cs * (1 - m) + sweepScale * m;
       ch.angle += dt * ch.rate * sp.spin.x * motion;
       ch.flow += dt * (ci ? -0.01 : 0.013) * motion;
       qa.setFromAxisAngle(ch.precAxis, time * ch.prec);
       ch.spin.setFromAxisAngle(ci ? v3.set(0.3, 1, 0.2).normalize() : worldY, ch.angle).multiply(qa);
-      const sw = ch.sweep;
       const length = ch.N * LINK.pitch * sweepScale;              // exact chain length when straight
       const zPlane = sw.z * (R.outer * cs + 0.5 * sweepScale);     // behind (A) / in front of (B) the core
       // closest the link centres may come to the core while travelling
@@ -663,6 +673,7 @@ export function createScene(canvas, { reduced = false, mobile = false, debug = f
         for (const ch of chains) for (let i = 0; i < ch.N; i++) pc = Math.min(pc, pt.pos.distanceTo(ch.pts[i]) - pt.r - LINK.bound * ch.scale * iS);
       }
       st.particle = Math.min(st.particle ?? Infinity, pc);
+      st.ends = chains.map((ch) => { if (ch.m < 0.999) return null; const a = v3.copy(ch.pts[0]).applyMatrix4(root.matrixWorld).project(camera).x, b = v3.copy(ch.pts[ch.N - 1]).applyMatrix4(root.matrixWorld).project(camera).x; return [Math.min(a, b), Math.max(a, b)].map((n) => +n.toFixed(2)); });
       st.cubeCube = Math.min(st.cubeCube, cc); st.cubeLink = Math.min(st.cubeLink, cl); st.cubeCore = Math.min(st.cubeCore, ck);
         st.chainChain = Math.min(st.chainChain, ab); st.linkCore = Math.min(st.linkCore, lk); st.frames++;
       }

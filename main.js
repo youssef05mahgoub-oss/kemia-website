@@ -39,7 +39,7 @@ function splitWords(el) {
    ========================================================== */
 let lenis = null;
 if (!reduced) {
-  lenis = new Lenis({ duration: 1.15, smoothWheel: true, wheelMultiplier: 0.95, touchMultiplier: 1.4 });
+  lenis = new Lenis({ lerp: 0.085, smoothWheel: true, wheelMultiplier: 0.9, touchMultiplier: 1.2 });
   lenis.on('scroll', ScrollTrigger.update);
   gsap.ticker.add((time) => lenis.raf(time * 1000));
   gsap.ticker.lagSmoothing(0);
@@ -83,21 +83,58 @@ const MOBILE = {
   footer:    { x: 0, y: 0.1, s: 1.2 },
 };
 let currentScene = 'hero';
+const NUM = ['x', 'y', 's', 'explode', 'chain', 'dark', 'sweepY'];
 function sceneState(name) {
   const st = isMobile() ? { ...SCENES[name], ...MOBILE[name] } : { ...SCENES[name] };
   if (document.documentElement.dir === 'rtl') st.x = -st.x; // mirror the layout in Arabic
   return st;
 }
-function setScene(name) {
+function setTheme(name) {
+  if (name === document.body.dataset.scene) return;
   currentScene = name;
   const s = sceneState(name);
   document.body.dataset.theme = s.dark > 0.5 ? 'dark' : 'light';
   document.body.dataset.scene = name;
   document.querySelector('meta[name="theme-color"]').setAttribute('content', s.dark > 0.5 ? '#0A0A0B' : '#EEECE6');
-  if (scene) {
-    scene.setState(s);
-  }
 }
+
+// Every section has a pose for the 3D piece. Around each section boundary the pose blends
+// smoothly from one to the next as you scroll (eased, over ~60% of a screen), so the motion
+// is tied to the scroll itself instead of jumping when a section edge is crossed.
+let stops = [];
+function measureStops() {
+  const secs = [...$$('[data-scene]'), $('.footer')].filter(Boolean);
+  stops = [];
+  secs.forEach((el) => {
+    const name = el.dataset.scene || 'footer';
+    // A section near the bottom (the footer) may never reach the probe line, so its pose is
+    // pulled in far enough to be fully reached when the page is scrolled to the end.
+    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+    let top = el.getBoundingClientRect().top + window.scrollY - (name === 'footer' ? window.innerHeight * 0.15 : 0);
+    top = Math.min(top, maxScroll + window.innerHeight * 0.25);
+    if (stops.length && stops[stops.length - 1].name === name) return; // same pose continues
+    stops.push({ name, top });
+  });
+}
+const smooth = (t) => t * t * t * (t * (t * 6 - 15) + 10);
+function updateScene() {
+  if (!stops.length) measureStops();
+  const vh = window.innerHeight;
+  const probe = (lenis ? lenis.scroll : window.scrollY) + vh * 0.55;
+  const win = vh * 0.6;
+  const st = { ...sceneState(stops[0].name) };
+  let name = stops[0].name;
+  for (let k = 1; k < stops.length; k++) {
+    const t = smooth(Math.min(1, Math.max(0, (probe - (stops[k].top - win / 2)) / win)));
+    if (t <= 0) break;
+    const next = sceneState(stops[k].name);
+    NUM.forEach((key) => { st[key] += (next[key] - st[key]) * t; });
+    if (t >= 0.5) name = stops[k].name;
+  }
+  setTheme(name);
+  if (scene) scene.setState(st);
+}
+function setScene() { updateScene(); }
 
 // Machines without a graphics card render WebGL in software, which is too slow for this
 // scene, so they get the page without the 3D (it still looks complete).
@@ -123,7 +160,7 @@ async function initScene() {
     setScene(currentScene);
     scene.snap();
     scene.intro = 0;
-    window.addEventListener('resize', () => { scene.resize(); setScene(currentScene); });
+    window.addEventListener('resize', () => { scene.resize(); measureStops(); updateScene(); });
     // Pointer (mouse or finger) drives the parallax and lets the particles part around it.
     const toScene = (x, y) => scene.setPointer((x / window.innerWidth) * 2 - 1, (y / window.innerHeight) * 2 - 1);
     window.addEventListener('pointermove', (e) => toScene(e.clientX, e.clientY), { passive: true });
@@ -144,26 +181,19 @@ async function initScene() {
    Scroll choreography
    ========================================================== */
 function setupScroll() {
-  // Section -> scene state
-  $$('[data-scene]').forEach((sec) => {
-    ScrollTrigger.create({
-      trigger: sec, start: 'top 55%', end: 'bottom 55%',
-      onToggle: (self) => { if (self.isActive) setScene(sec.dataset.scene); },
-    });
-  });
-  ScrollTrigger.create({
-    trigger: '.footer', start: 'top 70%', end: 'bottom top',
-    onToggle: (self) => { if (self.isActive) setScene('footer'); },
-  });
+  // Section poses blend continuously with the scroll position
+  ScrollTrigger.addEventListener('refresh', () => { measureStops(); updateScene(); });
+  if (lenis) lenis.on('scroll', updateScene); else window.addEventListener('scroll', updateScene, { passive: true });
+  measureStops(); updateScene();
 
   // Hero: wordmark letters spread and fade as you leave
   gsap.to('.wordmark span', {
     yPercent: (i) => [-10, 14, -18, 10, -6][i], ease: 'none',
-    scrollTrigger: { trigger: '.hero', start: 'top top', end: 'bottom top', scrub: true },
+    scrollTrigger: { trigger: '.hero', start: 'top top', end: 'bottom top', scrub: 0.6 },
   });
   gsap.to('.hero__grid', {
     yPercent: -30, opacity: 0, ease: 'none',
-    scrollTrigger: { trigger: '.hero', start: 'top top', end: 'bottom 30%', scrub: true },
+    scrollTrigger: { trigger: '.hero', start: 'top top', end: 'bottom 30%', scrub: 0.6 },
   });
 
   // Manifesto words light up with scroll
@@ -179,18 +209,18 @@ function setupScroll() {
   // Generic reveals
   ScrollTrigger.batch('.h2, .offer, .card, .step, .why__item, .faq details, .demo__points li, .stat, .form, .contact__text, .demo__text, .label', {
     start: 'top 88%',
-    onEnter: (els) => gsap.fromTo(els, { y: 50, opacity: 0 }, { y: 0, opacity: 1, duration: 1.1, ease: 'expo.out', stagger: 0.08, overwrite: true }),
+    onEnter: (els) => gsap.fromTo(els, { y: 36, opacity: 0 }, { y: 0, opacity: 1, duration: 1.2, ease: 'power3.out', stagger: 0.07, overwrite: true, force3D: true }),
   });
   ScrollTrigger.batch('.el', {
     start: 'top 90%',
-    onEnter: (els) => gsap.fromTo(els, { y: 80, opacity: 0, rotateX: -18 }, { y: 0, opacity: 1, rotateX: 0, duration: 1.2, ease: 'expo.out', stagger: 0.07, overwrite: true }),
+    onEnter: (els) => gsap.fromTo(els, { y: 56, opacity: 0 }, { y: 0, opacity: 1, duration: 1.25, ease: 'power3.out', stagger: 0.06, overwrite: true, force3D: true }),
   });
   gsap.fromTo('.contact__title > *', { yPercent: 100, opacity: 0 }, {
     yPercent: 0, opacity: 1, duration: 1.2, ease: 'expo.out', stagger: 0.12,
     scrollTrigger: { trigger: '.contact', start: 'top 70%' },
   });
   gsap.fromTo('.footer__word', { yPercent: 40 }, {
-    yPercent: 0, ease: 'none', scrollTrigger: { trigger: '.footer', start: 'top bottom', end: 'bottom bottom', scrub: true },
+    yPercent: 0, ease: 'none', scrollTrigger: { trigger: '.footer', start: 'top bottom', end: 'bottom bottom', scrub: 0.6 },
   });
 
   // Counters
